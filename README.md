@@ -2,8 +2,9 @@
 
 ## Installation ##
 
- * Copy folder *wirenboard* to */config/custom_component/*
+ * Copy folder *wirenboard* to */config/custom_components/*
  * Open web interface HA
+ * Developer tools -> restart
  * Settings -> Device&Services -> Add Integration select *wirenboard*
  * Add Host/Port of your wb controller
 

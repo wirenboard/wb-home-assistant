@@ -66,7 +66,9 @@ class WirenBoardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             {
                 vol.Required(
                     CONF_HOST,
-                    default=user_input.get(CONF_HOST, "") if user_input else "",
+                    default=user_input.get(CONF_HOST, "localhost")
+                    if user_input
+                    else "localhost",
                 ): str,
                 vol.Required(
                     CONF_PORT,
@@ -212,7 +214,9 @@ class WirenBoardOptionsFlow(config_entries.OptionsFlow):
             step_id="init",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_HOST, default=data.get(CONF_HOST, "")): str,
+                    vol.Required(
+                        CONF_HOST, default=data.get(CONF_HOST, "localhost")
+                    ): str,
                     vol.Required(
                         CONF_PORT, default=data.get(CONF_PORT, DEFAULT_PORT)
                     ): int,

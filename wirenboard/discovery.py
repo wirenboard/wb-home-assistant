@@ -10,6 +10,7 @@ from .const import META_READONLY, META_TYPE
 from .mqtt_client import WirenBoardMqttClient
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class WirenBoardDiscovery:

@@ -11,7 +11,7 @@ import paho.mqtt.client as mqtt
 from homeassistant.core import HomeAssistant
 
 logger = logging.getLogger(__name__)
-
+logger.setLevel(logging.INFO)
 
 def mqtt_topic_matches(subscription: str, topic: str) -> bool:
     """Check if a topic matches a subscription with wildcards."""
@@ -154,7 +154,7 @@ class WirenBoardMqttClient:
         if not matched_callbacks:
             logger.debug("No callbacks found for topic: %s", topic)
             logger.debug(
-                "📋 Available patterns: %s", list(self._message_callbacks.keys())
+                "Available patterns: %s", list(self._message_callbacks.keys())
             )
             return
         for callback in matched_callbacks:
