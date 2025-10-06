@@ -2,7 +2,7 @@
 
 ## Installation ##
 
- * Copy folder *wirenboard* to */config/custom_components/*
+ * Copy folder *wirenboard* to */mnt/data/.docker-compose/home-assistant/config/home-assistant/custom_components/*
  * Open web interface HA
  * Developer tools -> restart
  * Settings -> Device&Services -> Add Integration select *wirenboard*
