@@ -40,7 +40,7 @@ class WirenBoardMqttClient:
         self.port = port
         self.username = username
         self.password = password
-        self.client_id = client_id or "homeassistant_wirenboard"
+        self.client_id = client_id
         self.use_ssl = use_ssl
         self.verify_ssl = verify_ssl
         self.keepalive = keepalive
@@ -53,7 +53,7 @@ class WirenBoardMqttClient:
     async def connect(self) -> bool:
         """Connect to MQTT broker."""
         try:
-            self.client = mqtt.Client(client_id=self.client_id, protocol=mqtt.MQTTv311)
+            self.client = mqtt.Client(protocol=mqtt.MQTTv311)
 
             if self.username and self.password:
                 self.client.username_pw_set(self.username, self.password)
