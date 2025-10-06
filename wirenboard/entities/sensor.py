@@ -3,7 +3,13 @@
 import logging
 
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.const import PERCENTAGE, UnitOfPressure, UnitOfTemperature
+from homeassistant.const import (
+    CONCENTRATION_PARTS_PER_BILLION,
+    CONCENTRATION_PARTS_PER_MILLION,
+    PERCENTAGE,
+    UnitOfPressure,
+    UnitOfTemperature,
+)
 
 from .base import WirenBoardEntity
 
@@ -33,7 +39,6 @@ class WirenBoardSensor(WirenBoardEntity, SensorEntity):
         """Return the unit of measurement."""
         unit = self._device_info.get("unit")
         if unit:
-            logger.info(f"unit of measurement: {unit}")
             unit_mapping = {
                 "°C": UnitOfTemperature.CELSIUS,
                 "%": PERCENTAGE,
@@ -45,6 +50,8 @@ class WirenBoardSensor(WirenBoardEntity, SensorEntity):
                 "kW": "kW",
                 "kWh": "kWh",
                 "lux": "lx",
+                "ppb": CONCENTRATION_PARTS_PER_BILLION,
+                "ppm": CONCENTRATION_PARTS_PER_MILLION,
             }
             return unit_mapping.get(unit, unit)
         return None

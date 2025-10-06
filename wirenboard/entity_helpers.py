@@ -36,6 +36,12 @@ async def async_setup_platform_entries(
 
         try:
             mqtt_client = entry_data["mqtt_client"]
+            if device_info["control_id"].lower() == "Air Quality (VOC)".lower():
+                device_info["unit"] = "ppb"
+            elif device_info["control_id"].lower() == "Illuminance".lower():
+                device_info["unit"] = "lux"
+            elif device_info["control_id"].lower() == "CO2".lower():
+                device_info["unit"] = "ppm"
             entity = entity_class(device_info, mqtt_client)
             async_add_entities([entity])
             logger.info("Added %s entity: %s", platform, entity.name)
@@ -67,5 +73,10 @@ def _is_platform_match(device_type: str, platform: str) -> bool:
         "range": "number",
         "rgb": "light",
         "alarm": "binary_sensor",
+        "concentration": "sensor",
+        "ppb": "sensor",
+        "temperature": "sensor",
+        "lux": "sensor",
+        "ppm": "sensor",
     }
     return mapping.get(device_type) == platform

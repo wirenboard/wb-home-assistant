@@ -77,7 +77,6 @@ class WirenBoardDeviceManager:
                 control_id,
                 device_info["device_type"],
             )
-
             # Now we're in async context - safe to call async_dispatcher_send
             async_dispatcher_send(self.hass, SIGNAL_DEVICE_DISCOVERED, device_info)
             logger.debug("Discovery signal sent for device: %s", key)

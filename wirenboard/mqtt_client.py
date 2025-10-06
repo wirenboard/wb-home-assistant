@@ -15,8 +15,12 @@ logger.setLevel(logging.INFO)
 
 
 def mqtt_topic_matches(subscription: str, topic: str) -> bool:
-    """Check if a topic matches a subscription with wildcards."""
-    regex = subscription.replace("+", "[^/]+").replace("#", ".+") + "$"
+    """Check if a topic matches a subscription with MQTT wildcards."""
+    escaped_sub = re.escape(subscription)
+    escaped_sub = escaped_sub.replace(re.escape("#"), ".*")
+    escaped_sub = escaped_sub.replace(re.escape("+"), "[^/]+")
+    regex = f"^{escaped_sub}$"
+
     return bool(re.match(regex, topic))
 
 
