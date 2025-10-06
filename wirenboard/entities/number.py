@@ -13,6 +13,19 @@ logger = logging.getLogger(__name__)
 class WirenBoardNumber(WirenBoardEntity, NumberEntity):
     """Representation of a Wiren Board number."""
 
+    def __init__(self, device_info, mqtt_client):
+        value = device_info.get("min", "0")
+        if value:
+            self._attr_native_min_value = int(value)
+        else:
+            self._attr_native_min_value = 0
+        value = device_info.get("max", "100")
+        if value:
+            self._attr_native_max_value = int(value)
+        else:
+            self._attr_native_max_value = 100
+        super().__init__(device_info, mqtt_client)
+
     @property
     def value(self):
         """Return the current value."""

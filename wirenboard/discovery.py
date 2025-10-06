@@ -159,7 +159,7 @@ class WirenBoardDiscovery:
             "control_id": control_id,
             "device_type": meta.get(META_TYPE),
             "readonly": meta.get(META_READONLY) == "1",
-            "unit": meta.get("unit"),
+            "unit": meta.get("units"),
             "max": meta.get("max"),
             "min": meta.get("min"),
             "description": meta.get("description"),
