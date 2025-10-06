@@ -13,6 +13,7 @@ from homeassistant.core import HomeAssistant
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+
 def mqtt_topic_matches(subscription: str, topic: str) -> bool:
     """Check if a topic matches a subscription with wildcards."""
     regex = subscription.replace("+", "[^/]+").replace("#", ".+") + "$"
@@ -147,15 +148,13 @@ class WirenBoardMqttClient:
         logger.debug("MQTT message received: %s = %s", topic, payload)
 
         matched_callbacks = []
-        for pattern, callbacks in self._message_callbacks.items():
+        for pattern, callbacks in list(self._message_callbacks.items()):
             if mqtt_topic_matches(pattern, topic):
                 logger.debug("Pattern %s matches topic %s", pattern, topic)
                 matched_callbacks.extend(callbacks)
         if not matched_callbacks:
             logger.debug("No callbacks found for topic: %s", topic)
-            logger.debug(
-                "Available patterns: %s", list(self._message_callbacks.keys())
-            )
+            logger.debug("Available patterns: %s", list(self._message_callbacks.keys()))
             return
         for callback in matched_callbacks:
             # Call the callback directly - it's responsible for thread safety

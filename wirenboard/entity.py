@@ -7,7 +7,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
 
 logger = logging.getLogger(__name__)
-
+logger.setLevel(logging.INFO)
 
 class ExternalMQTTEntity(Entity, ABC):
     """Base class for entity in External MQTT."""
