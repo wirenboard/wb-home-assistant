@@ -39,7 +39,7 @@ class WirenBoardNumber(WirenBoardEntity, NumberEntity):
     def min_value(self):
         """Return the minimum value."""
         logger.warning(f"self._device_info {self._device_info}")
-        _min = self._device_info.get("min", 0)
+        _min = self._device_info.get("min")
         if _min is None:
             _min = 0
         return float(_min)
@@ -47,7 +47,7 @@ class WirenBoardNumber(WirenBoardEntity, NumberEntity):
     @property
     def max_value(self):
         """Return the maximum value."""
-        _max = self._device_info.get("max", 0)
+        _max = self._device_info.get("max")
         if _max is None:
             _max = 100
         return float(_max)

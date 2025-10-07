@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, SIGNAL_DEVICE_DISCOVERED
+from .const import DEVICE_TYPE_MAPPING, DOMAIN, SIGNAL_DEVICE_DISCOVERED
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,8 @@ async def async_setup_platform_entries(
     @callback
     def async_add_entity(device_info: Dict[str, Any]):
         """Add entity when discovered."""
-        if not _is_platform_match(device_info["device_type"], platform):
+        # if not _is_platform_match(device_info["device_type"], platform):
+        if not _is_platform_match(device_info, platform):
             return
 
         try:
@@ -64,19 +65,20 @@ async def async_setup_platform_entries(
     logger.info("Setup complete for %s platform", platform)
 
 
-def _is_platform_match(device_type: str, platform: str) -> bool:
-    """Check if device type matches platform."""
-    mapping = {
-        "switch": "switch",
-        "value": "sensor",
-        "pushbutton": "button",
-        "range": "number",
-        "rgb": "light",
-        "alarm": "binary_sensor",
-        "concentration": "sensor",
-        "ppb": "sensor",
-        "temperature": "sensor",
-        "lux": "sensor",
-        "ppm": "sensor",
-    }
-    return mapping.get(device_type) == platform
+def _is_platform_match(device_info: Dict[str, Any], platform: str) -> bool:
+    """Check if device type matches platform with readonly consideration."""
+    device_type = device_info["device_type"]
+    readonly = device_info.get("readonly", False)
+
+    target_platform = DEVICE_TYPE_MAPPING.get((device_type, readonly))
+
+    logger.debug(
+        "Checking device %s:%s (readonly=%s) -> %s vs %s",
+        device_info["device_id"],
+        device_info["control_id"],
+        readonly,
+        target_platform,
+        platform,
+    )
+
+    return target_platform == platform
