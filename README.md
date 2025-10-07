@@ -21,3 +21,4 @@ The integration is installed as a custom Home Assistant component. It is assumed
 | range|| number |
 | rgb|| light |
 | alarm|| binary_sensor |
+| text|| text |
