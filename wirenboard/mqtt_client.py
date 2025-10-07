@@ -16,10 +16,11 @@ logger.setLevel(logging.INFO)
 
 def mqtt_topic_matches(subscription: str, topic: str) -> bool:
     """Check if a topic matches a subscription with MQTT wildcards."""
-    escaped_sub = re.escape(subscription)
-    escaped_sub = escaped_sub.replace(re.escape("#"), ".*")
-    escaped_sub = escaped_sub.replace(re.escape("+"), "[^/]+")
-    regex = f"^{escaped_sub}$"
+    #    escaped_sub = re.escape(subscription)
+    #    escaped_sub = escaped_sub.replace(re.escape("#"), ".*")
+    #    escaped_sub = escaped_sub.replace(re.escape("+"), "[^/]+")
+    #    regex = f"^{escaped_sub}$"
+    regex = subscription.replace("+", "[^/]+").replace("#", ".+") + "$"
 
     return bool(re.match(regex, topic))
 
@@ -152,8 +153,10 @@ class WirenBoardMqttClient:
         logger.debug("MQTT message received: %s = %s", topic, payload)
 
         matched_callbacks = []
-        for pattern, callbacks in list(self._message_callbacks.items()):
-            if mqtt_topic_matches(pattern, topic):
+        for pattern, callbacks in tuple(self._message_callbacks.items()):
+            if pattern == topic:
+                matched_callbacks.extend(callbacks)
+            elif mqtt_topic_matches(pattern, topic):
                 logger.debug("Pattern %s matches topic %s", pattern, topic)
                 matched_callbacks.extend(callbacks)
         if not matched_callbacks:

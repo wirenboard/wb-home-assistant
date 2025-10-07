@@ -46,7 +46,7 @@ async def async_setup(hass: HomeAssistant, config: dict):
     hass.data.setdefault(DOMAIN, {})
 
     # Enable debug logging
-    logging.getLogger(__name__).setLevel(logging.DEBUG)
+    # logging.getLogger(__name__).setLevel(logging.DEBUG)
     logger.debug("Wiren Board integration setup started")
 
     # Register services
