@@ -2,7 +2,7 @@
 
 import logging
 
-from homeassistant.components.number import NumberEntity
+from homeassistant.components.number import NumberEntity, NumberMode
 
 from ..const import TOPIC_COMMAND
 from .base import WirenBoardEntity
@@ -24,6 +24,7 @@ class WirenBoardNumber(WirenBoardEntity, NumberEntity):
             self._attr_native_max_value = int(value)
         else:
             self._attr_native_max_value = 100
+        self._attr_mode = NumberMode.SLIDER
         super().__init__(device_info, mqtt_client)
 
     @property
@@ -40,8 +41,6 @@ class WirenBoardNumber(WirenBoardEntity, NumberEntity):
         logger.warning(f"self._device_info {self._device_info}")
         _min = self._device_info.get("min", 0)
         if _min is None:
-            _min = self.native_min_value
-        if _min is None:
             _min = 0
         return float(_min)
 
@@ -50,9 +49,7 @@ class WirenBoardNumber(WirenBoardEntity, NumberEntity):
         """Return the maximum value."""
         _max = self._device_info.get("max", 0)
         if _max is None:
-            _max = self.native_max_value
-        if _max is None:
-            _max = 1
+            _max = 100
         return float(_max)
 
     async def async_set_value(self, value: float):
