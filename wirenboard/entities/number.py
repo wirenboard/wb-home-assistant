@@ -24,6 +24,12 @@ class WirenBoardNumber(WirenBoardEntity, NumberEntity):
             self._attr_native_max_value = int(value)
         else:
             self._attr_native_max_value = 100
+        if (
+            device_info["device_id"] == "buzzer"
+            and device_info["control_id"] == "frequency"
+        ):
+            self._attr_native_min_value = 0
+            self._attr_native_max_value = 7000
         self._attr_mode = NumberMode.SLIDER
         super().__init__(device_info, mqtt_client)
 
@@ -41,6 +47,8 @@ class WirenBoardNumber(WirenBoardEntity, NumberEntity):
         logger.warning(f"self._device_info {self._device_info}")
         _min = self._device_info.get("min")
         if _min is None:
+            _min = self.native_min_value
+        if _min is None:
             _min = 0
         return float(_min)
 
@@ -48,6 +56,8 @@ class WirenBoardNumber(WirenBoardEntity, NumberEntity):
     def max_value(self):
         """Return the maximum value."""
         _max = self._device_info.get("max")
+        if _max is None:
+            _max = self.native_max_value
         if _max is None:
             _max = 100
         return float(_max)
