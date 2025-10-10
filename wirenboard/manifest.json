@@ -1,0 +1,18 @@
+{
+  "domain": "wirenboard",
+  "name": "wirenboard",
+  "codeowners": [
+    "@fedorov.victor"
+  ],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://www.home-assistant.io/integrations/wirenboard",
+  "homekit": {},
+  "iot_class": "local_push",
+  "quality_scale": "bronze",
+  "requirements": [],
+  "ssdp": [],
+  "zeroconf": [],
+  "version":"0.0.1",
+  "loggers": ["wirenboard"]
+}

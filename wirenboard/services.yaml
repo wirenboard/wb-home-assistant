@@ -1,0 +1,22 @@
+rediscover:
+  description: "Force rediscovery of Wirenboard devices."
+
+test_discovery:
+  description: "Test device discovery by listing found devices"
+
+publish:
+  description: "Publish a message to the MQTT broker."
+  fields:
+    topic:
+      description: "Topic to publish to."
+      example: "device/SomeDevice/controls/SmartThing1/on"
+    payload:
+      description: "Payload to send."
+      example: "1"
+    retain:
+      description: "Whether the message should be retained."
+      example: false
+
+
+update_states:
+  description: "Force update of all Wiren Board entities states"
