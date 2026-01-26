@@ -135,6 +135,6 @@ class WirenBoardEntity(Entity):
     async def _async_process_state_message(self, payload: str):
         """Process state message in async context."""
         logger.debug("State update for %s: %s", self.unique_id, payload)
-        self._state = payload
+        self._handle_state_update(payload)
         self._available = True
         self.async_write_ha_state()

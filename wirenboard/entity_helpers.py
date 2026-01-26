@@ -104,7 +104,7 @@ def _is_rgb_child_control(control_id: str) -> bool:
         " saturation", 
         " brightness",
         " bright",
-        " hue changing",  # For specific controls
+        " hue changing",
     ]
     
     for suffix in rgb_suffixes:

@@ -71,6 +71,8 @@ DEVICE_TYPE_MAPPING = {
     ("alarm", False): Platform.BINARY_SENSOR,
     ("temperature", True): Platform.SENSOR,
     ("temperature", False): Platform.SENSOR,
+    ("rel_humidity", True): Platform.SENSOR,
+    ("rel_humidity", False): Platform.SENSOR,
     ("lux", True): Platform.SENSOR,
     ("lux", False): Platform.SENSOR,
     ("ppm", True): Platform.SENSOR,
