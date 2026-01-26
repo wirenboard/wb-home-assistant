@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, List
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .const import META_READONLY, META_TYPE
+from .const import META_ORDER, META_READONLY, META_TYPE
 from .mqtt_client import WirenBoardMqttClient
 
 logger = logging.getLogger(__name__)
@@ -146,7 +146,8 @@ class WirenBoardDiscovery:
         meta = self._meta_cache.get(cache_key, {})
         has_type = META_TYPE in meta
         has_readonly = META_READONLY in meta
-        return has_type and has_readonly
+        has_order = META_ORDER in meta
+        return has_type and has_readonly and has_order
 
     def _create_device_info(
         self, device_id: str, control_id: str, cache_key: str
@@ -164,6 +165,18 @@ class WirenBoardDiscovery:
             "min": meta.get("min"),
             "description": meta.get("description"),
             "topic_prefix": self.entry.data.get("topic_prefix", "/devices"),
+            "type": meta.get(META_TYPE),
         }
+
+        # Log detailed info for LED devices
+        if "led" in device_id.lower():
+            logger.info(
+                "LED device discovered: %s/%s - type=%s, readonly=%s, meta=%s",
+                device_id,
+                control_id,
+                meta.get(META_TYPE),
+                meta.get(META_READONLY),
+                meta,
+            )
 
         return device_info

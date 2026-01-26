@@ -28,6 +28,7 @@ TOPIC_META = "/devices/{device}/controls/{control}/meta/{meta_key}"
 
 # Meta keys
 META_TYPE = "type"
+META_ORDER = "order"
 META_READONLY = "readonly"
 META_UNIT = "units"
 META_MAX = "max"
