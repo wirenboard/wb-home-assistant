@@ -1,1 +1,3 @@
 wirenboard/pyproject.toml
+**/__pycache__/**
+

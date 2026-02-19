@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, List
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .const import META_READONLY, META_TYPE
+from .const import META_ORDER, META_READONLY, META_TYPE
 from .mqtt_client import WirenBoardMqttClient
 
 logger = logging.getLogger(__name__)
@@ -87,12 +87,9 @@ class WirenBoardDiscovery:
     async def _async_process_meta_message(self, topic: str, payload: str):
         """Process meta message in async context."""
         try:
-            logger.debug("Discovery received meta message: %s = %s", topic, payload)
-
             topic_parts = topic.split("/")
             # Формат: /devices/device_id/controls/control_id/meta/meta_key
             if len(topic_parts) < 7:  # Минимум 7 частей из-за ведущего слеша
-                logger.debug("Invalid topic format: %s", topic)
                 return
 
             device_id = topic_parts[2]
@@ -101,9 +98,9 @@ class WirenBoardDiscovery:
 
             # Update meta cache
             cache_key = f"{device_id}/{control_id}"
-            if cache_key not in self._meta_cache:
+            is_new_device = cache_key not in self._meta_cache
+            if is_new_device:
                 self._meta_cache[cache_key] = {}
-                logger.debug("New device control discovered: %s", cache_key)
 
             self._meta_cache[cache_key][meta_key] = payload
 
@@ -117,12 +114,6 @@ class WirenBoardDiscovery:
 
     async def _async_notify_listeners(self, device_info: Dict[str, Any]):
         """Notify all listeners about discovered device."""
-        logger.debug(
-            "Notifying %d listeners about device %s",
-            len(self._listeners),
-            device_info["device_id"],
-        )
-
         if not self._listeners:
             logger.warning("No listeners registered for device discovery")
             return
@@ -135,7 +126,6 @@ class WirenBoardDiscovery:
     ):
         """Notify a single listener."""
         try:
-            logger.debug("Notifying listener about device %s", device_info["device_id"])
             # Call the listener directly - it's the device manager's sync method
             listener(device_info)
         except Exception as ex:
@@ -146,7 +136,8 @@ class WirenBoardDiscovery:
         meta = self._meta_cache.get(cache_key, {})
         has_type = META_TYPE in meta
         has_readonly = META_READONLY in meta
-        return has_type and has_readonly
+        has_order = META_ORDER in meta
+        return has_type and has_readonly and has_order
 
     def _create_device_info(
         self, device_id: str, control_id: str, cache_key: str
@@ -164,6 +155,18 @@ class WirenBoardDiscovery:
             "min": meta.get("min"),
             "description": meta.get("description"),
             "topic_prefix": self.entry.data.get("topic_prefix", "/devices"),
+            "type": meta.get(META_TYPE),  
         }
+
+        # Log detailed info for LED devices
+        if "led" in device_id.lower():
+            logger.info(
+                "LED device discovered: %s/%s - type=%s, readonly=%s, meta=%s",
+                device_id,
+                control_id,
+                meta.get(META_TYPE),
+                meta.get(META_READONLY),
+                meta,
+            )
 
         return device_info

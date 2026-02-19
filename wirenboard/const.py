@@ -28,6 +28,7 @@ TOPIC_META = "/devices/{device}/controls/{control}/meta/{meta_key}"
 
 # Meta keys
 META_TYPE = "type"
+META_ORDER = "order"
 META_READONLY = "readonly"
 META_UNIT = "units"
 META_MAX = "max"
@@ -70,6 +71,8 @@ DEVICE_TYPE_MAPPING = {
     ("alarm", False): Platform.BINARY_SENSOR,
     ("temperature", True): Platform.SENSOR,
     ("temperature", False): Platform.SENSOR,
+    ("rel_humidity", True): Platform.SENSOR,
+    ("rel_humidity", False): Platform.SENSOR,
     ("lux", True): Platform.SENSOR,
     ("lux", False): Platform.SENSOR,
     ("ppm", True): Platform.SENSOR,

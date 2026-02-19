@@ -19,6 +19,10 @@ logger = logging.getLogger(__name__)
 class WirenBoardSensor(WirenBoardEntity, SensorEntity):
     """Representation of a Wiren Board sensor."""
 
+    def __init__(self, device_info, mqtt_client):
+        """Initialize sensor."""
+        super().__init__(device_info, mqtt_client)
+
     def _handle_state_update(self, payload: str):
         """Handle state update for sensor."""
         try:
@@ -41,7 +45,11 @@ class WirenBoardSensor(WirenBoardEntity, SensorEntity):
         if unit:
             unit_mapping = {
                 "°C": UnitOfTemperature.CELSIUS,
+                "C": UnitOfTemperature.CELSIUS,
+                "deg C": UnitOfTemperature.CELSIUS,
                 "%": PERCENTAGE,
+                "% RH": PERCENTAGE,
+                "RH": PERCENTAGE,
                 "hPa": UnitOfPressure.HPA,
                 "Pa": UnitOfPressure.PA,
                 "V": "V",
@@ -53,5 +61,13 @@ class WirenBoardSensor(WirenBoardEntity, SensorEntity):
                 "ppb": CONCENTRATION_PARTS_PER_BILLION,
                 "ppm": CONCENTRATION_PARTS_PER_MILLION,
             }
-            return unit_mapping.get(unit, unit)
+            mapped = unit_mapping.get(unit, unit)
+            if mapped != unit:
+                logger.debug(
+                    "Unit mapped for %s: '%s' -> '%s'",
+                    self.unique_id,
+                    unit,
+                    mapped,
+                )
+            return mapped
         return None

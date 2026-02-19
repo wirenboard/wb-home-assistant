@@ -69,6 +69,17 @@ def _is_platform_match(device_info: Dict[str, Any], platform: str) -> bool:
     """Check if device type matches platform with readonly consideration."""
     device_type = device_info["device_type"]
     readonly = device_info.get("readonly", False)
+    control_id = device_info.get("control_id", "")
+
+    # Skip child controls of RGB lights (Hue, Saturation, Brightness)
+    # These are created by Wiren Board as separate controls but should not be separate entities
+    if _is_rgb_child_control(control_id):
+        logger.debug(
+            "Skipping RGB child control: %s:%s",
+            device_info["device_id"],
+            control_id,
+        )
+        return False
 
     target_platform = DEVICE_TYPE_MAPPING.get((device_type, readonly))
 
@@ -82,3 +93,30 @@ def _is_platform_match(device_info: Dict[str, Any], platform: str) -> bool:
     )
 
     return target_platform == platform
+
+
+def _is_rgb_child_control(control_id: str) -> bool:
+    """Check if control is a child of an RGB control."""
+    control_lower = control_id.lower()
+    # Check if control ends with common RGB child control suffixes
+    rgb_suffixes = [
+        " hue",
+        " saturation", 
+        " brightness",
+        " bright",
+        " hue changing",
+    ]
+    
+    for suffix in rgb_suffixes:
+        if control_lower.endswith(suffix):
+            # Additional check: control name should have a parent part
+            # e.g., "RGB Strip Hue" -> parent would be "RGB Strip"
+            if len(control_id) > len(suffix):
+                return True
+    
+    # Also check for controls that contain these keywords in the middle
+    # e.g., "Channel 4 Brightness" when "Channel 4" is RGB
+    if any(keyword in control_lower for keyword in [" hue ", " saturation ", " brightness ", " bright "]):
+        return True
+    
+    return False
