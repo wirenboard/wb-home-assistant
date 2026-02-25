@@ -58,8 +58,8 @@ DEVICE_TYPE_MAPPING = {
     ("switch", True): Platform.BINARY_SENSOR,
     ("switch", False): Platform.SWITCH,
     ("value", True): Platform.SENSOR,
-    ("value", False): Platform.SENSOR,  # Для записи используем другой тип
-    ("pushbutton", True): None,  # Не создаем сущности для readonly кнопок
+    ("value", False): Platform.SENSOR,  # Use SENSOR for both readonly and writable values
+    ("pushbutton", True): None,  # Do not create entities for readonly buttons
     ("pushbutton", False): Platform.BUTTON,
     ("range", True): Platform.SENSOR,
     ("range", False): Platform.NUMBER,
@@ -73,6 +73,10 @@ DEVICE_TYPE_MAPPING = {
     ("temperature", False): Platform.SENSOR,
     ("rel_humidity", True): Platform.SENSOR,
     ("rel_humidity", False): Platform.SENSOR,
+    ("power", True): Platform.SENSOR,
+    ("power", False): Platform.SENSOR,
+    ("power_consumption", True): Platform.SENSOR,
+    ("power_consumption", False): Platform.SENSOR,
     ("lux", True): Platform.SENSOR,
     ("lux", False): Platform.SENSOR,
     ("ppm", True): Platform.SENSOR,
