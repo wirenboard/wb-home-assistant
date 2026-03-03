@@ -1,18 +1,15 @@
 {
   "domain": "wirenboard",
-  "name": "wirenboard",
+  "name": "Wiren Board",
   "codeowners": [
     "@fedorov.victor"
   ],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://www.home-assistant.io/integrations/wirenboard",
-  "homekit": {},
+  "documentation": "https://github.com/wirenboard/wb-home-assistant",
   "iot_class": "local_push",
   "quality_scale": "bronze",
-  "requirements": [],
-  "ssdp": [],
-  "zeroconf": [],
-  "version":"0.0.1",
+  "requirements": ["paho-mqtt>=1.6.0"],
+  "version": "0.1.0",
   "loggers": ["wirenboard"]
 }
