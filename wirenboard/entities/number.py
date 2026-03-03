@@ -34,50 +34,21 @@ class WirenBoardNumber(WirenBoardEntity, NumberEntity):
         super().__init__(device_info, mqtt_client)
 
     @property
-    def value(self):
+    def native_value(self) -> float | None:
         """Return the current value."""
+        if self._state is None:
+            return None
         try:
-            return float(self._state) if self._state else 0.0
+            return float(self._state)
         except (ValueError, TypeError):
-            return 0.0
+            return None
 
-    @property
-    def min_value(self):
-        """Return the minimum value."""
-        logger.warning(f"self._device_info {self._device_info}")
-        _min = self._device_info.get("min")
-        if _min is None:
-            _min = self.native_min_value
-        if _min is None:
-            _min = 0
-        return float(_min)
-
-    @property
-    def max_value(self):
-        """Return the maximum value."""
-        _max = self._device_info.get("max")
-        if _max is None:
-            _max = self.native_max_value
-        if _max is None:
-            _max = 100
-        return float(_max)
-
-    async def async_set_value(self, value: float):
+    async def async_set_native_value(self, value: float) -> None:
         """Set new value."""
         if self._device_info.get("readonly"):
             logger.warning("Device %s is read-only", self.unique_id)
             return
-        # send to mqtt value
         command_topic = TOPIC_COMMAND.format(
             device=self.device_id, control=self.control_id
         )
         await self.mqtt_client.publish(command_topic, str(value), False)
-
-    def set_native_value(self, value):
-        """Set new native value."""
-        self.native_value = value
-        # send to mqtt value
-        command_topic = TOPIC_COMMAND.format(
-            device=self.device_id, control=self.control_id
-        )
-        self.mqtt_client.publish_sync(command_topic, str(value), False)

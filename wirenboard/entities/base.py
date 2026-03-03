@@ -5,10 +5,11 @@ from typing import Any, Dict
 
 from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import Entity
 
-from ..const import TOPIC_STATE
-from ..mqtt_client import WirenBoardMqttClient
+from ..const import TOPIC_META_ERROR, TOPIC_STATE
+from ..mqtt_client import SIGNAL_MQTT_DISCONNECTED, WirenBoardMqttClient
 
 logger = logging.getLogger(__name__)
 
@@ -29,15 +30,16 @@ class WirenBoardEntity(Entity):
         self._available = False
         self._unsubscribe_callbacks = []
 
-        # Set device_info as attribute
+        device_title = device_info.get("device_title") or device_info["device_id"]
+        device_driver = device_info.get("device_driver")
+
         self._attr_device_info = DeviceInfo(
             identifiers={("wirenboard", device_info["device_id"])},
-            name=device_info["device_id"],
+            name=device_title,
             manufacturer="Wiren Board",
-            model="Wiren Board Device",
+            model=device_driver or "Wiren Board Device",
         )
 
-        # Set unique_id as attribute
         self._attr_unique_id = (
             f"wirenboard_{device_info['device_id']}_{device_info['control_id']}"
         )
@@ -70,9 +72,21 @@ class WirenBoardEntity(Entity):
         logger.debug("Entity added to HA: %s", self.unique_id)
         await self._subscribe_topics()
 
-        # Init state = available true
-        self._available = True
-        self.async_write_ha_state()
+        # Listen for MQTT disconnect signal
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                SIGNAL_MQTT_DISCONNECTED,
+                self._handle_mqtt_disconnected,
+            )
+        )
+
+    @callback
+    def _handle_mqtt_disconnected(self):
+        """Mark entity unavailable on MQTT disconnect."""
+        if self._available:
+            self._available = False
+            self.async_write_ha_state()
 
     async def async_will_remove_from_hass(self):
         """Unsubscribe from MQTT topics."""
@@ -83,49 +97,51 @@ class WirenBoardEntity(Entity):
         self._unsubscribe_callbacks.clear()
 
     async def _subscribe_topics(self):
-        """Subscribe to relevant MQTT topics."""
-        # Topic for specific device
-        specific_topic = TOPIC_STATE.format(
+        """Subscribe to state and error MQTT topics."""
+        state_topic = TOPIC_STATE.format(
+            device=self.device_id, control=self.control_id
+        )
+        error_topic = TOPIC_META_ERROR.format(
             device=self.device_id, control=self.control_id
         )
 
-        # Pattern topic (for wildcard may be)
-        pattern_topic = f"/devices/{self.device_id}/controls/{self.control_id}"
-
         def state_message_received(topic: str, payload: str):
-            """Handle incoming state messages from MQTT thread - SYNCHRONOUS version."""
-            # This runs in MQTT thread - schedule async processing in main loop
+            """Handle incoming state messages from MQTT thread."""
             self.hass.loop.call_soon_threadsafe(
                 lambda: self.hass.async_create_task(
                     self._async_process_state_message(payload)
                 )
             )
 
+        def error_message_received(topic: str, payload: str):
+            """Handle incoming error messages from MQTT thread."""
+            self.hass.loop.call_soon_threadsafe(
+                lambda: self.hass.async_create_task(
+                    self._async_process_error_message(payload)
+                )
+            )
+
         try:
-            # Subscribe specific topic
-            await self.mqtt_client.subscribe(specific_topic, state_message_received)
-            logger.debug("Subscribed to specific topic: %s", specific_topic)
+            await self.mqtt_client.subscribe(state_topic, state_message_received)
+            logger.debug("Subscribed to state topic: %s", state_topic)
 
-            # Subscribe pattern topic 
-            await self.mqtt_client.subscribe(pattern_topic, state_message_received)
-            logger.debug("Subscribed to pattern topic: %s", pattern_topic)
-
-            # Save callback for unsubscribe
-            self._unsubscribe_callbacks.append(
-                lambda: self.hass.async_create_task(
-                    self.mqtt_client.unsubscribe(specific_topic, state_message_received)
-                )
-            )
+            await self.mqtt_client.subscribe(error_topic, error_message_received)
+            logger.debug("Subscribed to error topic: %s", error_topic)
 
             self._unsubscribe_callbacks.append(
                 lambda: self.hass.async_create_task(
-                    self.mqtt_client.unsubscribe(pattern_topic, state_message_received)
+                    self.mqtt_client.unsubscribe(state_topic, state_message_received)
                 )
             )
-
-        except Exception as ex:  
+            self._unsubscribe_callbacks.append(
+                lambda: self.hass.async_create_task(
+                    self.mqtt_client.unsubscribe(error_topic, error_message_received)
+                )
+            )
+        except Exception as ex:
             logger.error(
-                "Failed to subscribe to topic for entity %s: %s", self.unique_id, ex
+                "Failed to subscribe to topics for entity %s: %s",
+                self.unique_id, ex,
             )
 
     def _handle_state_update(self, payload: str):
@@ -138,3 +154,24 @@ class WirenBoardEntity(Entity):
         self._handle_state_update(payload)
         self._available = True
         self.async_write_ha_state()
+
+    async def _async_process_error_message(self, payload: str):
+        """Process meta/error message per WB convention.
+
+        Empty string = no error (available).
+        "r" = read error, "w" = write error, "p" = period miss.
+        Combinations like "rw" are possible.
+        """
+        if payload == "":
+            # No error — available (state will be updated by state topic)
+            if not self._available:
+                self._available = True
+                self.async_write_ha_state()
+        else:
+            # Error present — mark unavailable
+            if self._available:
+                logger.warning(
+                    "Entity %s became unavailable: error=%s", self.unique_id, payload
+                )
+                self._available = False
+                self.async_write_ha_state()

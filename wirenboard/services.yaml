@@ -1,22 +1,29 @@
 rediscover:
-  description: "Force rediscovery of Wirenboard devices."
+  description: "Force rediscovery of Wiren Board devices."
+  fields:
+    device_filter:
+      description: "Optional filter for device IDs."
+      required: false
+      example: "wb-mr6cu"
 
 test_discovery:
-  description: "Test device discovery by listing found devices"
+  description: "List all discovered devices in the log."
 
 publish:
   description: "Publish a message to the MQTT broker."
   fields:
     topic:
       description: "Topic to publish to."
-      example: "device/SomeDevice/controls/SmartThing1/on"
+      required: true
+      example: "/devices/wb-mr6cu_105/controls/K1/on"
     payload:
       description: "Payload to send."
+      required: true
       example: "1"
     retain:
       description: "Whether the message should be retained."
+      required: false
       example: false
 
-
 update_states:
-  description: "Force update of all Wiren Board entities states"
+  description: "Force rediscovery and state update of all Wiren Board entities."
