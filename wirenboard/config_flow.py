@@ -141,9 +141,9 @@ class WirenBoardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 username=config.get(CONF_USERNAME),
                 password=config.get(CONF_PASSWORD),
                 client_id=config.get(CONF_CLIENT_ID),
-                use_ssl=config.get(CONF_USE_SSL),
-                verify_ssl=config.get(CONF_VERIFY_SSL),
-                keepalive=config.get(CONF_KEEPALIVE),
+                use_ssl=config.get(CONF_USE_SSL, DEFAULT_USE_SSL),
+                verify_ssl=config.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
+                keepalive=config.get(CONF_KEEPALIVE, DEFAULT_KEEPALIVE),
             )
 
             # Test connection
