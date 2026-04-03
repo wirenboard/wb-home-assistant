@@ -12,7 +12,6 @@ from .discovery import WirenBoardDiscovery
 from .mqtt_client import WirenBoardMqttClient
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 
 class WirenBoardDeviceManager:
