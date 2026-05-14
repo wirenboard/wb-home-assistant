@@ -67,7 +67,7 @@ class WirenBoardEntity(Entity):
 
     async def async_added_to_hass(self):
         """Subscribe to MQTT topics when entity is added to HA."""
-        logger.debug("Entity added to HA: %s", self.unique_id)
+        logger.info("👁️ Entity added to HA: %s", self.unique_id)
         await self._subscribe_topics()
 
         # Init state = available true
@@ -104,11 +104,11 @@ class WirenBoardEntity(Entity):
         try:
             # Subscribe specific topic
             await self.mqtt_client.subscribe(specific_topic, state_message_received)
-            logger.debug("Subscribed to specific topic: %s", specific_topic)
+            logger.info("📡 Subscribed to topic: %s", specific_topic)
 
-            # Subscribe pattern topic 
+            # Subscribe pattern topic
             await self.mqtt_client.subscribe(pattern_topic, state_message_received)
-            logger.debug("Subscribed to pattern topic: %s", pattern_topic)
+            logger.info("📡 Subscribed to pattern topic: %s", pattern_topic)
 
             # Save callback for unsubscribe
             self._unsubscribe_callbacks.append(

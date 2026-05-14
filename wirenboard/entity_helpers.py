@@ -33,6 +33,12 @@ async def async_setup_platform_entries(
         """Add entity when discovered."""
         # if not _is_platform_match(device_info["device_type"], platform):
         if not _is_platform_match(device_info, platform):
+            logger.debug(
+                "Platform %s rejected device %s:%s",
+                platform,
+                device_info.get("device_id"),
+                device_info.get("control_id"),
+            )
             return
 
         try:
@@ -70,6 +76,7 @@ def _is_platform_match(device_info: Dict[str, Any], platform: str) -> bool:
     device_type = device_info["device_type"]
     readonly = device_info.get("readonly", False)
     control_id = device_info.get("control_id", "")
+    enum_options = device_info.get("enum")
 
     # Skip child controls of RGB lights (Hue, Saturation, Brightness)
     # These are created by Wiren Board as separate controls but should not be separate entities
@@ -81,13 +88,37 @@ def _is_platform_match(device_info: Dict[str, Any], platform: str) -> bool:
         )
         return False
 
+    # Check if this is a SELECT entity (has enum options and is text type)
+    if enum_options and device_type == "text":
+        is_select = platform == "select"
+        logger.info(
+            "✓ ENUM CONTROL DETECTED: %s:%s has enum=%s -> SELECT=%s",
+            device_info["device_id"],
+            control_id,
+            enum_options,
+            is_select,
+        )
+        return is_select
+
+    # Text controls without enum become SENSOR entities
+    if device_type == "text" and not enum_options:
+        is_sensor = platform == "sensor"
+        if is_sensor:
+            logger.info(
+                "📝 TEXT SENSOR: %s:%s (no enum)",
+                device_info["device_id"],
+                control_id,
+            )
+        return is_sensor
+
     target_platform = DEVICE_TYPE_MAPPING.get((device_type, readonly))
 
     logger.debug(
-        "Checking device %s:%s (readonly=%s) -> %s vs %s",
+        "Checking device %s:%s (readonly=%s, enum=%s) -> %s vs %s",
         device_info["device_id"],
         device_info["control_id"],
         readonly,
+        bool(enum_options),
         target_platform,
         platform,
     )
