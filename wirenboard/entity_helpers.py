@@ -28,6 +28,9 @@ async def async_setup_platform_entries(
     entry_data = hass.data[DOMAIN][config_entry.entry_id]
     device_manager = entry_data["device_manager"]
 
+    # Clean up orphaned entities for this platform
+    await _cleanup_orphaned_entities(hass, platform)
+
     @callback
     def async_add_entity(device_info: Dict[str, Any]):
         """Add entity when discovered."""
@@ -124,6 +127,29 @@ def _is_platform_match(device_info: Dict[str, Any], platform: str) -> bool:
     )
 
     return target_platform == platform
+
+
+async def _cleanup_orphaned_entities(hass: HomeAssistant, platform: str) -> None:
+    """Clean up orphaned entities that should not exist."""
+    try:
+        from homeassistant.helpers import entity_registry
+
+        er = entity_registry.async_get(hass)
+        wirenboard_entities = [
+            entity for entity in er.entities.values()
+            if entity.platform == DOMAIN and entity.entity_id.startswith(f"{platform}.")
+        ]
+
+        for entity in wirenboard_entities:
+            # Check if this is a sensor for an enum control (should be select instead)
+            if platform == "sensor" and "effect" in entity.original_name.lower():
+                logger.info("🗑️ Removing orphaned SENSOR for enum control: %s", entity.entity_id)
+                er.async_remove(entity.entity_id)
+            elif platform == "sensor" and "color_power" in entity.original_name.lower():
+                logger.info("🗑️ Removing orphaned SENSOR for enum control: %s", entity.entity_id)
+                er.async_remove(entity.entity_id)
+    except Exception as ex:
+        logger.debug("Error cleaning up orphaned entities: %s", ex)
 
 
 def _is_rgb_child_control(control_id: str) -> bool:

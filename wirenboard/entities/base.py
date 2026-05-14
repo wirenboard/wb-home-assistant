@@ -62,16 +62,25 @@ class WirenBoardEntity(Entity):
 
     @property
     def available(self) -> bool:
-        """Return True if entity is available."""
-        return self._available
+        """Return True if entity is available and MQTT is connected."""
+        mqtt_connected = self.mqtt_client and self.mqtt_client.connected
+        return self._available and mqtt_connected
 
     async def async_added_to_hass(self):
         """Subscribe to MQTT topics when entity is added to HA."""
         logger.info("👁️ Entity added to HA: %s", self.unique_id)
         await self._subscribe_topics()
 
-        # Init state = available true
-        self._available = True
+        # Try to get last known state from state machine
+        if self.hass.states.get(self.entity_id):
+            last_state = self.hass.states.get(self.entity_id)
+            if last_state.state != "unknown":
+                self._available = True
+                self._state = last_state.state
+
+        if not self._available:
+            self._available = True
+
         self.async_write_ha_state()
 
     async def async_will_remove_from_hass(self):
