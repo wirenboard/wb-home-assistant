@@ -58,6 +58,7 @@ def _is_platform_match(device_info: Dict[str, Any], platform: str) -> bool:
     device_type = device_info["device_type"]
     readonly = device_info.get("readonly", False)
     control_id = device_info.get("control_id", "")
+    enum_options = device_info.get("enum")
 
     # Skip child controls of RGB lights (Hue, Saturation, Brightness)
     if _is_rgb_child_control(control_id):
@@ -67,6 +68,14 @@ def _is_platform_match(device_info: Dict[str, Any], platform: str) -> bool:
             control_id,
         )
         return False
+
+    # Check if this is a SELECT entity (has enum options and is text type)
+    if enum_options and device_type == "text":
+        return platform == "select"
+
+    # Text controls without enum become SENSOR entities
+    if device_type == "text" and not enum_options:
+        return platform == "sensor"
 
     target_platform = DEVICE_TYPE_MAPPING.get((device_type, readonly))
 

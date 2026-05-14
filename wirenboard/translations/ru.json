@@ -1,0 +1,34 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Подключение Wiren Board",
+        "description": "Настройка интеграции Wiren Board",
+        "data": {
+          "host": "Хост",
+          "port": "Порт",
+          "username": "Имя пользователя",
+          "password": "Пароль",
+          "use_ssl": "Использовать SSL",
+          "verify_ssl": "Проверять сертификат SSL"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Невозможно подключиться",
+      "invalid_auth": "Неверная аутентификация",
+      "unknown": "Неизвестная ошибка"
+    },
+    "abort": {
+      "already_configured": "Устройство уже настроено"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Параметры Wiren Board",
+        "description": "Обновление параметров интеграции"
+      }
+    }
+  }
+}

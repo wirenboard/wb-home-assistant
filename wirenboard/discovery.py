@@ -27,6 +27,8 @@ class WirenBoardDiscovery:
         self._listeners: List[Callable] = []
         self._meta_cache: Dict[str, Dict[str, Any]] = {}
         self._device_meta_cache: Dict[str, Dict[str, Any]] = {}
+        self._notified_devices: set = set()
+        self._pending_notifications: Dict[str, Any] = {}
 
     async def async_setup(self):
         """Set up discovery."""
@@ -153,7 +155,22 @@ class WirenBoardDiscovery:
 
             if self._has_complete_meta(cache_key):
                 device_info = self._create_device_info(device_id, control_id, cache_key)
-                await self._async_notify_listeners(device_info)
+
+                # For text controls, delay first notification to allow enum to arrive
+                device_type = self._meta_cache[cache_key].get(META_TYPE)
+                if device_type == "text" and cache_key not in self._notified_devices:
+                    # Schedule delayed notification for text controls
+                    self._pending_notifications[cache_key] = device_info
+                    self.hass.loop.call_later(
+                        0.05,  # 50ms delay to wait for enum
+                        lambda: self.hass.async_create_task(
+                            self._async_send_pending_notification(cache_key)
+                        )
+                    )
+                else:
+                    # Non-text controls or updates to already-notified controls notify immediately
+                    self._notified_devices.add(cache_key)
+                    await self._async_notify_listeners(device_info)
 
         except Exception as ex:
             logger.error("Error processing meta message for topic %s: %s", topic, ex)
@@ -176,6 +193,21 @@ class WirenBoardDiscovery:
         except Exception as ex:
             logger.error("Error notifying listener: %s", ex)
 
+    async def _async_send_pending_notification(self, cache_key: str):
+        """Send a pending notification after delay for text controls."""
+        if cache_key not in self._pending_notifications:
+            return
+
+        device_info = self._pending_notifications.pop(cache_key)
+
+        # Re-create device_info in case enum arrived during the delay
+        if "/" in cache_key:
+            device_id, control_id = cache_key.split("/")
+            device_info = self._create_device_info(device_id, control_id, cache_key)
+
+        self._notified_devices.add(cache_key)
+        await self._async_notify_listeners(device_info)
+
     def _has_complete_meta(self, cache_key: str) -> bool:
         """Check if we have complete meta data for a device."""
         meta = self._meta_cache.get(cache_key, {})
@@ -186,6 +218,16 @@ class WirenBoardDiscovery:
     ) -> Dict[str, Any]:
         """Create device information dictionary."""
         meta = self._meta_cache[cache_key]
+
+        # Parse enum if present
+        enum_str = meta.get("enum")
+        enum_options = None
+        if enum_str:
+            try:
+                enum_data = json.loads(enum_str)
+                enum_options = list(enum_data.keys())
+            except (json.JSONDecodeError, ValueError):
+                logger.warning("Failed to parse enum for %s/%s: %s", device_id, control_id, enum_str)
 
         return {
             "device_id": device_id,
@@ -198,6 +240,7 @@ class WirenBoardDiscovery:
             "description": meta.get("description"),
             "topic_prefix": self.entry.data.get("topic_prefix", "/devices"),
             "type": meta.get(META_TYPE),
+            "enum": enum_options,
             "device_title": self.get_device_title(device_id),
             "device_driver": self.get_device_driver(device_id),
         }
