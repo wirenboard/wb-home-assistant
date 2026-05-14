@@ -1,0 +1,29 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Конфигурация Wiren Board",
+        "description": "Настройка подключения к MQTT брокеру Wiren Board",
+        "data": {
+          "host": "Адрес MQTT брокера",
+          "port": "Порт MQTT брокера",
+          "username": "Имя пользователя (опционально)",
+          "password": "Пароль (опционально)",
+          "client_id": "ID клиента",
+          "topic_prefix": "Префикс топика",
+          "discovery_topic": "Топик для обнаружения",
+          "use_ssl": "Использовать SSL/TLS",
+          "verify_ssl": "Проверять SSL сертификат",
+          "keepalive": "Время жизни соединения (секунды)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Ошибка подключения к MQTT брокеру",
+      "unknown": "Произошла неизвестная ошибка"
+    },
+    "abort": {
+      "already_configured": "Этот Wiren Board брокер уже настроен"
+    }
+  }
+}
