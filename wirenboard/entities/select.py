@@ -1,11 +1,9 @@
 """SELECT entity for Wiren Board enum controls."""
 
-import json
 import logging
 from typing import Any, Dict
 
 from homeassistant.components.select import SelectEntity
-from homeassistant.core import callback
 
 from ..const import TOPIC_COMMAND
 from ..mqtt_client import WirenBoardMqttClient
@@ -25,9 +23,7 @@ class WirenBoardSelect(WirenBoardEntity, SelectEntity):
         """Initialize the SELECT entity."""
         super().__init__(device_info, mqtt_client)
         self._attr_options = device_info.get("enum") or []
-        self._enum_data = None
 
-        # Try to parse enum data from control meta
         if self._attr_options:
             logger.debug("SELECT entity initialized with options: %s", self._attr_options)
 
@@ -60,7 +56,7 @@ class WirenBoardSelect(WirenBoardEntity, SelectEntity):
         )
 
         try:
-            await self.mqtt_client.async_publish(command_topic, option)
+            await self.mqtt_client.publish(command_topic, option)
             logger.info(
                 "Published command to %s: %s", command_topic, option
             )
