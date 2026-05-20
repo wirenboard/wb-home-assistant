@@ -63,12 +63,23 @@ class WirenBoardDiscovery:
             DEVICE_META_TOPIC, self._sync_handle_device_meta
         )
         self._listeners.clear()
+        self._reset_discovery_state()
         logger.debug("Discovery teardown complete")
 
     async def async_rediscover(self):
         """Force rediscovery of devices."""
-        self._meta_cache.clear()
+        self._reset_discovery_state()
         logger.info("Rediscovery triggered")
+
+    def _reset_discovery_state(self) -> None:
+        """Clear meta caches and cancel any pending debounce timers."""
+        for handle in self._pending_handles.values():
+            handle.cancel()
+        self._pending_handles.clear()
+        self._pending_notifications.clear()
+        self._notified_devices.clear()
+        self._meta_cache.clear()
+        self._device_meta_cache.clear()
 
     def get_device_title(self, device_id: str) -> str | None:
         """Get device title from device-level meta."""
@@ -229,9 +240,16 @@ class WirenBoardDiscovery:
         if enum_str:
             try:
                 enum_data = json.loads(enum_str)
-                enum_options = list(enum_data.keys())
             except (json.JSONDecodeError, ValueError):
                 logger.warning("Failed to parse enum for %s/%s: %s", device_id, control_id, enum_str)
+            else:
+                if isinstance(enum_data, dict):
+                    enum_options = list(enum_data.keys())
+                else:
+                    logger.warning(
+                        "Enum payload for %s/%s is not an object: %s",
+                        device_id, control_id, enum_str,
+                    )
 
         return {
             "device_id": device_id,
