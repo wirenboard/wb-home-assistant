@@ -12,7 +12,6 @@ async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
-    discovery_info=None,
 ) -> None:
     """Set up SELECT platform."""
     await async_setup_platform_entries(

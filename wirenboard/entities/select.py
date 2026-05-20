@@ -42,6 +42,10 @@ class WirenBoardSelect(WirenBoardEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         """Select an option."""
+        if self._device_info.get("readonly"):
+            logger.warning("Device %s is read-only", self.unique_id)
+            return
+
         if option not in self._attr_options:
             logger.warning(
                 "Invalid option %s for %s, valid options: %s",
@@ -56,10 +60,8 @@ class WirenBoardSelect(WirenBoardEntity, SelectEntity):
         )
 
         try:
+            logger.debug("Publishing command to %s: %s", command_topic, option)
             await self.mqtt_client.publish(command_topic, option)
-            logger.info(
-                "Published command to %s: %s", command_topic, option
-            )
         except Exception as ex:
             logger.error(
                 "Failed to publish command for %s: %s", self.unique_id, ex
