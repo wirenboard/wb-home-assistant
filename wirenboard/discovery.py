@@ -103,11 +103,15 @@ class WirenBoardDiscovery:
             if self._has_complete_meta(cache_key):
                 device_id, control_id = cache_key.split("/", 1)
                 device_info = self._create_device_info(device_id, control_id, cache_key)
-                self.hass.loop.call_soon_threadsafe(
-                    lambda di=device_info: self.hass.async_create_task(
-                        self._async_notify_listener(listener, di)
+                device_type = self._meta_cache[cache_key].get(META_TYPE)
+                if device_type == "text" and cache_key not in self._notified_devices:
+                    self._schedule_pending_notification(cache_key, device_info)
+                else:
+                    self.hass.loop.call_soon_threadsafe(
+                        lambda di=device_info: self.hass.async_create_task(
+                            self._async_notify_listener(listener, di)
+                        )
                     )
-                )
 
         return lambda: self._listeners.remove(listener)
 
@@ -172,16 +176,7 @@ class WirenBoardDiscovery:
                 if device_type == "text" and cache_key not in self._notified_devices:
                     # Debounce: each new meta key (e.g. late-arriving "enum")
                     # resets the timer so we notify with the fully-settled meta.
-                    prev_handle = self._pending_handles.pop(cache_key, None)
-                    if prev_handle is not None:
-                        prev_handle.cancel()
-                    self._pending_notifications[cache_key] = device_info
-                    self._pending_handles[cache_key] = self.hass.loop.call_later(
-                        0.3,
-                        lambda: self.hass.async_create_task(
-                            self._async_send_pending_notification(cache_key)
-                        ),
-                    )
+                    self._schedule_pending_notification(cache_key, device_info)
                 else:
                     self._notified_devices.add(cache_key)
                     await self._async_notify_listeners(device_info)
@@ -222,6 +217,21 @@ class WirenBoardDiscovery:
 
         self._notified_devices.add(cache_key)
         await self._async_notify_listeners(device_info)
+
+    def _schedule_pending_notification(
+        self, cache_key: str, device_info: Dict[str, Any]
+    ) -> None:
+        """Schedule debounced notification for text controls."""
+        prev_handle = self._pending_handles.pop(cache_key, None)
+        if prev_handle is not None:
+            prev_handle.cancel()
+        self._pending_notifications[cache_key] = device_info
+        self._pending_handles[cache_key] = self.hass.loop.call_later(
+            0.3,
+            lambda: self.hass.async_create_task(
+                self._async_send_pending_notification(cache_key)
+            ),
+        )
 
     def _has_complete_meta(self, cache_key: str) -> bool:
         """Check if we have complete meta data for a device."""
