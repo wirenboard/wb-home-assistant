@@ -22,8 +22,10 @@ async def async_get_config_entry_diagnostics(
 
     devices_info = {}
     if device_manager:
-        for device_id, device_info in device_manager.get_all_devices().items():
-            devices_info[device_id] = {
+        for key, device_info in device_manager.get_all_devices().items():
+            devices_info[key] = {
+                "device_id": device_info.get("device_id"),
+                "control_id": device_info.get("control_id"),
                 "device_type": device_info.get("device_type"),
                 "readonly": device_info.get("readonly"),
                 "enum_options": len(device_info.get("enum", [])) if device_info.get("enum") else 0,

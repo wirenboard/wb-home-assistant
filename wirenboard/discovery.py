@@ -101,7 +101,7 @@ class WirenBoardDiscovery:
         # Notify about already discovered devices
         for cache_key in self._meta_cache:
             if self._has_complete_meta(cache_key):
-                device_id, control_id = cache_key.split("/")
+                device_id, control_id = cache_key.split("/", 1)
                 device_info = self._create_device_info(device_id, control_id, cache_key)
                 self.hass.loop.call_soon_threadsafe(
                     lambda di=device_info: self.hass.async_create_task(
@@ -217,7 +217,7 @@ class WirenBoardDiscovery:
 
         # Re-create device_info in case enum arrived during the delay
         if "/" in cache_key:
-            device_id, control_id = cache_key.split("/")
+            device_id, control_id = cache_key.split("/", 1)
             device_info = self._create_device_info(device_id, control_id, cache_key)
 
         self._notified_devices.add(cache_key)
