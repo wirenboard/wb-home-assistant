@@ -14,7 +14,7 @@
           "discovery_topic": "Топик обнаружения",
           "use_ssl": "Использовать SSL",
           "verify_ssl": "Проверять сертификат SSL",
-          "keepalive": "Keep Alive (секунды)"
+          "keepalive": "Период поддержания соединения (сек)"
         }
       }
     },
@@ -42,7 +42,7 @@
           "discovery_topic": "Топик обнаружения",
           "use_ssl": "Использовать SSL",
           "verify_ssl": "Проверять сертификат SSL",
-          "keepalive": "Keep Alive (секунды)"
+          "keepalive": "Период поддержания соединения (сек)"
         }
       }
     },
