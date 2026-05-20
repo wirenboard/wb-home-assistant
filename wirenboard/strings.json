@@ -20,10 +20,35 @@
     },
     "error": {
       "cannot_connect": "Failed to connect to MQTT broker",
+      "invalid_auth": "Invalid authentication",
       "unknown": "Unknown error occurred"
     },
     "abort": {
       "already_configured": "This Wiren Board broker is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Wiren Board Options",
+        "description": "Update integration settings",
+        "data": {
+          "host": "MQTT Broker Host",
+          "port": "MQTT Broker Port",
+          "username": "Username (optional)",
+          "password": "Password (optional)",
+          "client_id": "Client ID",
+          "topic_prefix": "Topic Prefix",
+          "discovery_topic": "Discovery Topic",
+          "use_ssl": "Use SSL/TLS",
+          "verify_ssl": "Verify SSL Certificate",
+          "keepalive": "Keep Alive (seconds)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to MQTT broker",
+      "unknown": "Unknown error occurred"
     }
   }
 }
