@@ -30,15 +30,15 @@ class WirenBoardSelect(WirenBoardEntity, SelectEntity):
     @property
     def current_option(self) -> str | None:
         """Return the selected option."""
-        if not self._state:
-            return self._attr_options[0] if self._attr_options else None
+        if self._state is None:
+            return None
 
         # Validate state is a valid option
         if self._state in self._attr_options:
             return self._state
 
-        # Return first option if state is invalid
-        return self._attr_options[0] if self._attr_options else None
+        # Return None if state is invalid/unknown
+        return None
 
     async def async_select_option(self, option: str) -> None:
         """Select an option."""
