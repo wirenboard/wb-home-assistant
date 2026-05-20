@@ -19,6 +19,7 @@ PLATFORMS = [
     Platform.LIGHT,
     Platform.BINARY_SENSOR,
     Platform.TEXT,
+    Platform.SELECT,
 ]
 
 # MQTT topics

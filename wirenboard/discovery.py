@@ -27,6 +27,9 @@ class WirenBoardDiscovery:
         self._listeners: List[Callable] = []
         self._meta_cache: Dict[str, Dict[str, Any]] = {}
         self._device_meta_cache: Dict[str, Dict[str, Any]] = {}
+        self._notified_devices: set = set()
+        self._pending_notifications: Dict[str, Any] = {}
+        self._pending_handles: Dict[str, Any] = {}
 
     async def async_setup(self):
         """Set up discovery."""
@@ -60,12 +63,23 @@ class WirenBoardDiscovery:
             DEVICE_META_TOPIC, self._sync_handle_device_meta
         )
         self._listeners.clear()
+        self._reset_discovery_state()
         logger.debug("Discovery teardown complete")
 
     async def async_rediscover(self):
         """Force rediscovery of devices."""
-        self._meta_cache.clear()
+        self._reset_discovery_state()
         logger.info("Rediscovery triggered")
+
+    def _reset_discovery_state(self) -> None:
+        """Clear meta caches and cancel any pending debounce timers."""
+        for handle in self._pending_handles.values():
+            handle.cancel()
+        self._pending_handles.clear()
+        self._pending_notifications.clear()
+        self._notified_devices.clear()
+        self._meta_cache.clear()
+        self._device_meta_cache.clear()
 
     def get_device_title(self, device_id: str) -> str | None:
         """Get device title from device-level meta."""
@@ -87,13 +101,17 @@ class WirenBoardDiscovery:
         # Notify about already discovered devices
         for cache_key in self._meta_cache:
             if self._has_complete_meta(cache_key):
-                device_id, control_id = cache_key.split("/")
+                device_id, control_id = cache_key.split("/", 1)
                 device_info = self._create_device_info(device_id, control_id, cache_key)
-                self.hass.loop.call_soon_threadsafe(
-                    lambda di=device_info: self.hass.async_create_task(
-                        self._async_notify_listener(listener, di)
+                device_type = self._meta_cache[cache_key].get(META_TYPE)
+                if device_type == "text" and cache_key not in self._notified_devices:
+                    self._schedule_pending_notification(cache_key, device_info)
+                else:
+                    self.hass.loop.call_soon_threadsafe(
+                        lambda di=device_info: self.hass.async_create_task(
+                            self._async_notify_listener(listener, di)
+                        )
                     )
-                )
 
         return lambda: self._listeners.remove(listener)
 
@@ -153,7 +171,15 @@ class WirenBoardDiscovery:
 
             if self._has_complete_meta(cache_key):
                 device_info = self._create_device_info(device_id, control_id, cache_key)
-                await self._async_notify_listeners(device_info)
+
+                device_type = self._meta_cache[cache_key].get(META_TYPE)
+                if device_type == "text" and cache_key not in self._notified_devices:
+                    # Debounce: each new meta key (e.g. late-arriving "enum")
+                    # resets the timer so we notify with the fully-settled meta.
+                    self._schedule_pending_notification(cache_key, device_info)
+                else:
+                    self._notified_devices.add(cache_key)
+                    await self._async_notify_listeners(device_info)
 
         except Exception as ex:
             logger.error("Error processing meta message for topic %s: %s", topic, ex)
@@ -176,6 +202,37 @@ class WirenBoardDiscovery:
         except Exception as ex:
             logger.error("Error notifying listener: %s", ex)
 
+    async def _async_send_pending_notification(self, cache_key: str):
+        """Send a pending notification after delay for text controls."""
+        self._pending_handles.pop(cache_key, None)
+        if cache_key not in self._pending_notifications:
+            return
+
+        device_info = self._pending_notifications.pop(cache_key)
+
+        # Re-create device_info in case enum arrived during the delay
+        if "/" in cache_key:
+            device_id, control_id = cache_key.split("/", 1)
+            device_info = self._create_device_info(device_id, control_id, cache_key)
+
+        self._notified_devices.add(cache_key)
+        await self._async_notify_listeners(device_info)
+
+    def _schedule_pending_notification(
+        self, cache_key: str, device_info: Dict[str, Any]
+    ) -> None:
+        """Schedule debounced notification for text controls."""
+        prev_handle = self._pending_handles.pop(cache_key, None)
+        if prev_handle is not None:
+            prev_handle.cancel()
+        self._pending_notifications[cache_key] = device_info
+        self._pending_handles[cache_key] = self.hass.loop.call_later(
+            0.3,
+            lambda: self.hass.async_create_task(
+                self._async_send_pending_notification(cache_key)
+            ),
+        )
+
     def _has_complete_meta(self, cache_key: str) -> bool:
         """Check if we have complete meta data for a device."""
         meta = self._meta_cache.get(cache_key, {})
@@ -186,6 +243,23 @@ class WirenBoardDiscovery:
     ) -> Dict[str, Any]:
         """Create device information dictionary."""
         meta = self._meta_cache[cache_key]
+
+        # Parse enum if present
+        enum_str = meta.get("enum")
+        enum_options = None
+        if enum_str:
+            try:
+                enum_data = json.loads(enum_str)
+            except (json.JSONDecodeError, ValueError):
+                logger.warning("Failed to parse enum for %s/%s: %s", device_id, control_id, enum_str)
+            else:
+                if isinstance(enum_data, dict):
+                    enum_options = list(enum_data.keys())
+                else:
+                    logger.warning(
+                        "Enum payload for %s/%s is not an object: %s",
+                        device_id, control_id, enum_str,
+                    )
 
         return {
             "device_id": device_id,
@@ -198,6 +272,7 @@ class WirenBoardDiscovery:
             "description": meta.get("description"),
             "topic_prefix": self.entry.data.get("topic_prefix", "/devices"),
             "type": meta.get(META_TYPE),
+            "enum": enum_options,
             "device_title": self.get_device_title(device_id),
             "device_driver": self.get_device_driver(device_id),
         }
