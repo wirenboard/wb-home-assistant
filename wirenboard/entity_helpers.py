@@ -75,10 +75,6 @@ def _is_platform_match(device_info: Dict[str, Any], platform: str) -> bool:
     if enum_options and device_type == "text":
         return platform == ("sensor" if readonly else "select")
 
-    # Text controls without enum become SENSOR entities
-    if device_type == "text" and not enum_options:
-        return platform == "sensor"
-
     target_platform = DEVICE_TYPE_MAPPING.get((device_type, readonly))
 
     if target_platform is None and (device_type, readonly) not in DEVICE_TYPE_MAPPING:
