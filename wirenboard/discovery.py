@@ -29,6 +29,7 @@ class WirenBoardDiscovery:
         self._device_meta_cache: Dict[str, Dict[str, Any]] = {}
         self._notified_devices: set = set()
         self._pending_notifications: Dict[str, Any] = {}
+        self._pending_handles: Dict[str, Any] = {}
 
     async def async_setup(self):
         """Set up discovery."""
@@ -156,19 +157,21 @@ class WirenBoardDiscovery:
             if self._has_complete_meta(cache_key):
                 device_info = self._create_device_info(device_id, control_id, cache_key)
 
-                # For text controls, delay first notification to allow enum to arrive
                 device_type = self._meta_cache[cache_key].get(META_TYPE)
                 if device_type == "text" and cache_key not in self._notified_devices:
-                    # Schedule delayed notification for text controls
+                    # Debounce: each new meta key (e.g. late-arriving "enum")
+                    # resets the timer so we notify with the fully-settled meta.
+                    prev_handle = self._pending_handles.pop(cache_key, None)
+                    if prev_handle is not None:
+                        prev_handle.cancel()
                     self._pending_notifications[cache_key] = device_info
-                    self.hass.loop.call_later(
-                        0.05,  # 50ms delay to wait for enum
+                    self._pending_handles[cache_key] = self.hass.loop.call_later(
+                        0.3,
                         lambda: self.hass.async_create_task(
                             self._async_send_pending_notification(cache_key)
-                        )
+                        ),
                     )
                 else:
-                    # Non-text controls or updates to already-notified controls notify immediately
                     self._notified_devices.add(cache_key)
                     await self._async_notify_listeners(device_info)
 
@@ -195,6 +198,7 @@ class WirenBoardDiscovery:
 
     async def _async_send_pending_notification(self, cache_key: str):
         """Send a pending notification after delay for text controls."""
+        self._pending_handles.pop(cache_key, None)
         if cache_key not in self._pending_notifications:
             return
 
