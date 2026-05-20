@@ -69,9 +69,11 @@ def _is_platform_match(device_info: Dict[str, Any], platform: str) -> bool:
         )
         return False
 
-    # Check if this is a SELECT entity (has enum options and is text type)
+    # Text controls with enum options become SELECT entities only when writable.
+    # Read-only enum text controls must remain SENSOR entities to avoid exposing
+    # a writable entity for a read-only WB control.
     if enum_options and device_type == "text":
-        return platform == "select"
+        return platform == ("sensor" if readonly else "select")
 
     # Text controls without enum become SENSOR entities
     if device_type == "text" and not enum_options:
