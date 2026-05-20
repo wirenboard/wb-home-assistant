@@ -4,6 +4,7 @@ import logging
 from typing import Any, Dict
 
 from homeassistant.components.select import SelectEntity
+from homeassistant.exceptions import HomeAssistantError
 
 from ..const import TOPIC_COMMAND
 from ..mqtt_client import WirenBoardMqttClient
@@ -66,3 +67,6 @@ class WirenBoardSelect(WirenBoardEntity, SelectEntity):
             logger.error(
                 "Failed to publish command for %s: %s", self.unique_id, ex
             )
+            raise HomeAssistantError(
+                f"Failed to publish command for {self.unique_id}: {ex}"
+            ) from ex
