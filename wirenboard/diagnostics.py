@@ -2,17 +2,21 @@
 
 from typing import Any, Dict
 
+from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN
+from .const import CONF_CLIENT_ID, DOMAIN
+
+TO_REDACT = {CONF_HOST, CONF_USERNAME, CONF_PASSWORD, CONF_CLIENT_ID}
 
 
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, config_entry: ConfigEntry
 ) -> Dict[str, Any]:
     """Return diagnostics for a config entry."""
-    entry_data = hass.data[DOMAIN][config_entry.entry_id]
+    entry_data = hass.data.get(DOMAIN, {}).get(config_entry.entry_id, {})
     device_manager = entry_data.get("device_manager")
     mqtt_client = entry_data.get("mqtt_client")
 
@@ -27,12 +31,7 @@ async def async_get_config_entry_diagnostics(
             }
 
     return {
-        "config_entry": {
-            "host": config_entry.data.get("host"),
-            "port": config_entry.data.get("port"),
-            "use_ssl": config_entry.data.get("use_ssl"),
-            "topic_prefix": config_entry.data.get("topic_prefix"),
-        },
+        "config_entry": async_redact_data(dict(config_entry.data), TO_REDACT),
         "mqtt_client": {
             "connected": mqtt_client.connected if mqtt_client else False,
         },
