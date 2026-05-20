@@ -9,8 +9,12 @@
           "port": "Порт",
           "username": "Имя пользователя",
           "password": "Пароль",
+          "client_id": "Идентификатор клиента",
+          "topic_prefix": "Префикс топика",
+          "discovery_topic": "Топик обнаружения",
           "use_ssl": "Использовать SSL",
-          "verify_ssl": "Проверять сертификат SSL"
+          "verify_ssl": "Проверять сертификат SSL",
+          "keepalive": "Keep Alive (секунды)"
         }
       }
     },
@@ -27,8 +31,24 @@
     "step": {
       "init": {
         "title": "Параметры Wiren Board",
-        "description": "Обновление параметров интеграции"
+        "description": "Обновление параметров интеграции",
+        "data": {
+          "host": "Хост",
+          "port": "Порт",
+          "username": "Имя пользователя",
+          "password": "Пароль",
+          "client_id": "Идентификатор клиента",
+          "topic_prefix": "Префикс топика",
+          "discovery_topic": "Топик обнаружения",
+          "use_ssl": "Использовать SSL",
+          "verify_ssl": "Проверять сертификат SSL",
+          "keepalive": "Keep Alive (секунды)"
+        }
       }
+    },
+    "error": {
+      "cannot_connect": "Невозможно подключиться",
+      "unknown": "Неизвестная ошибка"
     }
   }
 }
