@@ -160,14 +160,15 @@ class WirenBoardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):
-        return WirenBoardOptionsFlow(config_entry)
+        return WirenBoardOptionsFlow()
 
 
 class WirenBoardOptionsFlow(config_entries.OptionsFlow):
     """Handle options flow for Wiren Board."""
 
-    def __init__(self, config_entry):
-        self.config_entry = config_entry
+    def __init__(self):
+        # HA sets self.config_entry after instantiation via async_get_options_flow;
+        # assigning it in __init__ breaks on HA 2026.x where it is a read-only property.
         self._client = None
 
     async def async_step_init(self, user_input=None):
