@@ -4,12 +4,59 @@ import logging
 from typing import Any, Dict, Type
 
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DEVICE_TYPE_MAPPING, DOMAIN, SIGNAL_DEVICE_DISCOVERED
 
 logger = logging.getLogger(__name__)
+
+
+def _unique_id_for(device_id: str, control_id: str) -> str:
+    """Match WirenBoardEntity's unique_id convention."""
+    return f"wirenboard_{device_id}_{control_id}"
+
+
+@callback
+def _migrate_orphan_pre_light(
+    hass: HomeAssistant, device_info: Dict[str, Any]
+) -> None:
+    """Remove entity_registry rows that belong to the previous platform layout.
+
+    Before this feature, a WB-LED/WB-MDM3 dimmable output was surfaced as
+    ``switch.wirenboard_<device>_<control>`` plus
+    ``number.wirenboard_<device>_<control>_brightness``. Now the same output is
+    published as a single ``light.wirenboard_<device>_<control>``. HA's entity
+    registry keys on ``(integration, domain, unique_id)``, so the switch and
+    number rows would persist as orphans and break automations that still
+    reference them. Clear them before the Light is registered.
+    """
+    registry = er.async_get(hass)
+    device_id = device_info["device_id"]
+    control_id = device_info["control_id"]
+    brightness_control_id = device_info.get("brightness_control_id")
+
+    for domain in ("switch", "number", "binary_sensor"):
+        old = registry.async_get_entity_id(
+            domain, DOMAIN, _unique_id_for(device_id, control_id)
+        )
+        if old:
+            logger.info("Removing orphan %s → light for %s", old, control_id)
+            registry.async_remove(old)
+
+    if brightness_control_id:
+        for domain in ("number", "sensor"):
+            old = registry.async_get_entity_id(
+                domain,
+                DOMAIN,
+                _unique_id_for(device_id, brightness_control_id),
+            )
+            if old:
+                logger.info(
+                    "Removing orphan %s (brightness peer folded into light)", old
+                )
+                registry.async_remove(old)
 
 
 async def async_setup_platform_entries(
@@ -31,6 +78,12 @@ async def async_setup_platform_entries(
             return
 
         try:
+            if (
+                platform == "light"
+                and device_info.get("brightness_control_id")
+            ):
+                _migrate_orphan_pre_light(hass, device_info)
+
             entity = entity_class(device_info, mqtt_client)
             async_add_entities([entity])
             logger.info("Added %s entity: %s", platform, entity.name)

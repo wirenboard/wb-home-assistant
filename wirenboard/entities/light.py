@@ -12,7 +12,7 @@ from homeassistant.components.light import (
     LightEntity,
 )
 
-from ..const import TOPIC_COMMAND, TOPIC_STATE
+from ..const import TOPIC_COMMAND, TOPIC_META_ERROR, TOPIC_STATE
 from .base import WirenBoardEntity
 
 logger = logging.getLogger(__name__)
@@ -40,10 +40,21 @@ class WirenBoardLight(WirenBoardEntity, LightEntity):
             "brightness_control_id"
         )
         self._is_dimmable = self._brightness_control_id is not None
-        # Device-reported range for the brightness channel (typically 0..100).
-        self._brightness_min = 0
-        self._brightness_max = 100
-        self._last_brightness_pct = 100
+        # Device-reported range for the brightness channel — populated by
+        # discovery from the peer's meta (typically 0..100 on WB devices).
+        self._brightness_min = self._coerce_int(
+            device_info.get("brightness_min"), 0
+        )
+        self._brightness_max = self._coerce_int(
+            device_info.get("brightness_max"), 100
+        )
+        if self._brightness_max <= self._brightness_min:
+            self._brightness_max = self._brightness_min + 100
+        self._brightness_readonly = bool(
+            device_info.get("brightness_readonly") or False
+        )
+        self._last_brightness_device_val = self._brightness_max
+        self._brightness_error = False
 
         if self._is_rgb:
             self._attr_supported_color_modes = {ColorMode.HS}
@@ -57,6 +68,20 @@ class WirenBoardLight(WirenBoardEntity, LightEntity):
         else:
             self._attr_supported_color_modes = {ColorMode.ONOFF}
             self._attr_color_mode = ColorMode.ONOFF
+
+    @staticmethod
+    def _coerce_int(value: Any, default: int) -> int:
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            return default
+
+    @property
+    def available(self) -> bool:
+        """Available only if both switch and brightness peer report no error."""
+        if not self._available:
+            return False
+        return not self._brightness_error
 
     @property
     def is_on(self) -> bool:
@@ -112,12 +137,12 @@ class WirenBoardLight(WirenBoardEntity, LightEntity):
             if ATTR_BRIGHTNESS in kwargs:
                 brightness_255 = kwargs[ATTR_BRIGHTNESS]
                 pct = self._ha_to_device_brightness(brightness_255)
-                self._last_brightness_pct = pct
+                self._last_brightness_device_val = pct
                 await self._publish_brightness(pct)
-            elif self._last_brightness_pct == 0:
+            elif self._last_brightness_device_val == 0:
                 # Brightness slider is currently at zero — restore to full when
                 # the user just toggles on with no explicit brightness value.
-                self._last_brightness_pct = self._brightness_max
+                self._last_brightness_device_val = self._brightness_max
                 await self._publish_brightness(self._brightness_max)
             await self._publish_switch("1")
             return
@@ -174,45 +199,57 @@ class WirenBoardLight(WirenBoardEntity, LightEntity):
         if not self._is_dimmable:
             return
 
-        # Read the brightness range from the base device_info (device-reported
-        # min/max) if available.
-        try:
-            reported_max = self._device_info.get("max")
-            if reported_max is not None:
-                self._brightness_max = int(float(reported_max))
-        except (TypeError, ValueError):
-            pass
-
         brightness_state_topic = TOPIC_STATE.format(
             device=self.device_id, control=self._brightness_control_id
         )
+        brightness_error_topic = TOPIC_META_ERROR.format(
+            device=self.device_id, control=self._brightness_control_id
+        )
 
-        def brightness_message_received(topic: str, payload: str) -> None:
+        def brightness_state_received(topic: str, payload: str) -> None:
             self.hass.loop.call_soon_threadsafe(
                 lambda: self.hass.async_create_task(
                     self._async_process_brightness_message(payload)
                 )
             )
 
+        def brightness_error_received(topic: str, payload: str) -> None:
+            self.hass.loop.call_soon_threadsafe(
+                lambda: self.hass.async_create_task(
+                    self._async_process_brightness_error(payload)
+                )
+            )
+
+        await self._subscribe_one(brightness_state_topic, brightness_state_received, "brightness state")
+        await self._subscribe_one(brightness_error_topic, brightness_error_received, "brightness error")
+
+    async def _subscribe_one(self, topic: str, cb, label: str) -> None:
         try:
-            await self.mqtt_client.subscribe(
-                brightness_state_topic, brightness_message_received
-            )
-            logger.debug(
-                "Subscribed to brightness topic: %s", brightness_state_topic
-            )
+            await self.mqtt_client.subscribe(topic, cb)
+            logger.debug("Subscribed to %s topic: %s", label, topic)
             self._unsubscribe_callbacks.append(
                 lambda: self.hass.async_create_task(
-                    self.mqtt_client.unsubscribe(
-                        brightness_state_topic, brightness_message_received
-                    )
+                    self.mqtt_client.unsubscribe(topic, cb)
                 )
             )
         except Exception as ex:
             logger.error(
-                "Failed to subscribe to brightness topic for %s: %s",
-                self.unique_id, ex,
+                "Failed to subscribe to %s topic for %s: %s",
+                label, self.unique_id, ex,
             )
+
+    async def _async_process_brightness_error(self, payload: str) -> None:
+        """Reflect brightness peer's meta/error into the Light's availability."""
+        if payload == "":
+            self._brightness_error = False
+        else:
+            if not self._brightness_error:
+                logger.warning(
+                    "Entity %s brightness peer became unavailable: error=%s",
+                    self.unique_id, payload,
+                )
+            self._brightness_error = True
+        self.async_write_ha_state()
 
     async def _async_process_brightness_message(self, payload: str) -> None:
         """Process brightness state (0..device_max) and reflect in HA brightness."""
@@ -226,7 +263,7 @@ class WirenBoardLight(WirenBoardEntity, LightEntity):
             )
             return
         device_val = max(self._brightness_min, min(self._brightness_max, device_val))
-        self._last_brightness_pct = device_val
+        self._last_brightness_device_val = device_val
         self._brightness = self._device_to_ha_brightness(device_val)
         self.async_write_ha_state()
 
@@ -252,6 +289,11 @@ class WirenBoardLight(WirenBoardEntity, LightEntity):
     async def _publish_brightness(self, device_val: int) -> None:
         """Publish to the brightness command topic (dimmable channel only)."""
         if not self._brightness_control_id:
+            return
+        if self._brightness_readonly:
+            logger.warning(
+                "Brightness peer of %s is read-only", self.unique_id
+            )
             return
         await self._publish_to(self._brightness_control_id, str(device_val))
 

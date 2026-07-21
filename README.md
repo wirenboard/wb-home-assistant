@@ -22,3 +22,16 @@ The integration is installed as a custom Home Assistant component. It is assumed
 | rgb|| light |
 | alarm|| binary_sensor |
 | text|| text |
+
+### Dimmable channels (WB-LED, WB-MDM3) ###
+
+When a writable `switch` control has a paired brightness `range` control on
+the same device — either `<name>` + `<name> Brightness` (as in WB-LED white
+channels) or `KN` + `Channel N` (as in WB-MDM3) — they are surfaced as a
+single dimmable `light` entity. The paired range does **not** appear as a
+separate `number`; its value is exposed as the light's brightness.
+
+Read-only text controls with an `enum` remain a `sensor`; writable ones
+become a `select`. Controls that belong to the RGB Palette group
+(`RGB Strip`, `RGB Strip Hue/Saturation/Brightness`) are hidden — the RGB
+light owns them.
