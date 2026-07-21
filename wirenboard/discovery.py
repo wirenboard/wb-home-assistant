@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from typing import Any, Callable, Dict, List
 
 from homeassistant.config_entries import ConfigEntry
@@ -13,6 +14,16 @@ from .mqtt_client import WirenBoardMqttClient
 logger = logging.getLogger(__name__)
 
 DEVICE_META_TOPIC = "/devices/+/meta"
+
+# Bounded number of times a pending notification can wait for its potential
+# switch/brightness pair partner before firing regardless.
+_MAX_PAIR_DEFERRALS = 2
+
+# Naming conventions for dimmable channels published by WB devices.
+# WB-LED (white channels): "Channel N" switch paired with "Channel N Brightness" range.
+# WB-MDM3 (each output):  "KN" switch paired with "Channel N" range.
+_K_CHANNEL_RE = re.compile(r"^K(\d+)$")
+_CHANNEL_RE = re.compile(r"^Channel (\d+)$")
 
 
 class WirenBoardDiscovery:
@@ -30,6 +41,10 @@ class WirenBoardDiscovery:
         self._notified_devices: set = set()
         self._pending_notifications: Dict[str, Any] = {}
         self._pending_handles: Dict[str, Any] = {}
+        # Number of times a cache_key has been re-deferred while waiting for a
+        # potential pair partner to appear in meta cache. Capped by
+        # _MAX_PAIR_DEFERRALS to keep the worst-case delay bounded.
+        self._pair_deferrals: Dict[str, int] = {}
 
     async def async_setup(self):
         """Set up discovery."""
@@ -77,6 +92,7 @@ class WirenBoardDiscovery:
             handle.cancel()
         self._pending_handles.clear()
         self._pending_notifications.clear()
+        self._pair_deferrals.clear()
         self._notified_devices.clear()
         self._meta_cache.clear()
         self._device_meta_cache.clear()
@@ -103,8 +119,7 @@ class WirenBoardDiscovery:
             if self._has_complete_meta(cache_key):
                 device_id, control_id = cache_key.split("/", 1)
                 device_info = self._create_device_info(device_id, control_id, cache_key)
-                device_type = self._meta_cache[cache_key].get(META_TYPE)
-                if device_type == "text" and cache_key not in self._notified_devices:
+                if cache_key not in self._notified_devices:
                     self._schedule_pending_notification(cache_key, device_info)
                 else:
                     self.hass.loop.call_soon_threadsafe(
@@ -172,13 +187,24 @@ class WirenBoardDiscovery:
             if self._has_complete_meta(cache_key):
                 device_info = self._create_device_info(device_id, control_id, cache_key)
 
-                device_type = self._meta_cache[cache_key].get(META_TYPE)
-                if device_type == "text" and cache_key not in self._notified_devices:
-                    # Debounce: each new meta key (e.g. late-arriving "enum")
+                if cache_key not in self._notified_devices:
+                    # Debounce: each new meta key (late "enum", or a matching
+                    # "<name> Brightness" range arriving after its switch peer)
                     # resets the timer so we notify with the fully-settled meta.
                     self._schedule_pending_notification(cache_key, device_info)
+                    # If this control looks like the pair partner of another
+                    # pending control, reset that partner's debounce too so it
+                    # can pick up the newly-arrived peer.
+                    partner_key = self._pair_partner_key(device_id, control_id)
+                    if (
+                        partner_key
+                        and partner_key in self._pending_notifications
+                        and partner_key not in self._notified_devices
+                    ):
+                        p_dev, p_ctrl = partner_key.split("/", 1)
+                        p_info = self._create_device_info(p_dev, p_ctrl, partner_key)
+                        self._schedule_pending_notification(partner_key, p_info)
                 else:
-                    self._notified_devices.add(cache_key)
                     await self._async_notify_listeners(device_info)
 
         except Exception as ex:
@@ -203,25 +229,47 @@ class WirenBoardDiscovery:
             logger.error("Error notifying listener: %s", ex)
 
     async def _async_send_pending_notification(self, cache_key: str):
-        """Send a pending notification after delay for text controls."""
+        """Emit a pending discovery notification for a settled control.
+
+        Fires after the debounce window elapses. If the control looks like it
+        could pair with a peer (switch↔brightness) but the peer's meta is not
+        yet cached, defer up to ``_MAX_PAIR_DEFERRALS`` more times so the pair
+        can settle before the entity is decided.
+        """
         self._pending_handles.pop(cache_key, None)
         if cache_key not in self._pending_notifications:
             return
 
-        device_info = self._pending_notifications.pop(cache_key)
+        device_info = self._pending_notifications[cache_key]
 
-        # Re-create device_info in case enum arrived during the delay
+        # Re-create device_info in case peer meta (enum, brightness peer,
+        # switch peer) arrived during the delay.
         if "/" in cache_key:
             device_id, control_id = cache_key.split("/", 1)
             device_info = self._create_device_info(device_id, control_id, cache_key)
 
+            if self._should_defer_for_pair(device_id, control_id, device_info):
+                deferrals = self._pair_deferrals.get(cache_key, 0)
+                if deferrals < _MAX_PAIR_DEFERRALS:
+                    self._pair_deferrals[cache_key] = deferrals + 1
+                    self._pending_notifications[cache_key] = device_info
+                    self._pending_handles[cache_key] = self.hass.loop.call_later(
+                        0.3,
+                        lambda: self.hass.async_create_task(
+                            self._async_send_pending_notification(cache_key)
+                        ),
+                    )
+                    return
+
+        self._pending_notifications.pop(cache_key, None)
+        self._pair_deferrals.pop(cache_key, None)
         self._notified_devices.add(cache_key)
         await self._async_notify_listeners(device_info)
 
     def _schedule_pending_notification(
         self, cache_key: str, device_info: Dict[str, Any]
     ) -> None:
-        """Schedule debounced notification for text controls."""
+        """Schedule a debounced notification (any control, not just text)."""
         prev_handle = self._pending_handles.pop(cache_key, None)
         if prev_handle is not None:
             prev_handle.cancel()
@@ -232,6 +280,57 @@ class WirenBoardDiscovery:
                 self._async_send_pending_notification(cache_key)
             ),
         )
+
+    def _pair_partner_key(self, device_id: str, control_id: str) -> str | None:
+        """Return the expected pair-partner cache_key for a control, or None.
+
+        Mirrors the naming rules in ``_detect_brightness_pair`` but does not
+        require the partner to already be in _meta_cache — this is the "we
+        might have a peer coming, please wait for it" predictor.
+        """
+        if self._is_rgb_group_control(control_id):
+            return None
+        if control_id.endswith(self._BRIGHTNESS_SUFFIX):
+            base = control_id[: -len(self._BRIGHTNESS_SUFFIX)]
+            return f"{device_id}/{base}"
+        m = _CHANNEL_RE.match(control_id)
+        if m:
+            return f"{device_id}/K{m.group(1)}"
+        m = _K_CHANNEL_RE.match(control_id)
+        if m:
+            return f"{device_id}/Channel {m.group(1)}"
+        # A plain switch may also expect a "<name> Brightness" range peer.
+        return f"{device_id}/{control_id}{self._BRIGHTNESS_SUFFIX}"
+
+    def _should_defer_for_pair(
+        self, device_id: str, control_id: str, device_info: Dict[str, Any]
+    ) -> bool:
+        """True if this control looks like a pair half whose partner hasn't landed yet.
+
+        We only defer when the naming actively suggests a pair (i.e. WB-LED
+        "<name> Brightness" ranges, WB-MDM3 "K<N>" switches, "Channel <N>"
+        ranges) and no peer meta is cached. This avoids delaying unrelated
+        controls whose names happen to look switch-like.
+        """
+        if device_info.get("brightness_control_id") is not None:
+            return False
+        if device_info.get("is_brightness_child"):
+            return False
+        if self._is_rgb_group_control(control_id):
+            return False
+
+        looks_like_pair_half = (
+            control_id.endswith(self._BRIGHTNESS_SUFFIX)
+            or _K_CHANNEL_RE.match(control_id) is not None
+            or _CHANNEL_RE.match(control_id) is not None
+        )
+        if not looks_like_pair_half:
+            return False
+
+        partner = self._pair_partner_key(device_id, control_id)
+        if partner is None:
+            return False
+        return partner not in self._meta_cache
 
     def _has_complete_meta(self, cache_key: str) -> bool:
         """Check if we have complete meta data for a device."""
@@ -261,6 +360,21 @@ class WirenBoardDiscovery:
                         device_id, control_id, enum_str,
                     )
 
+        brightness_control_id, is_brightness_child = self._detect_brightness_pair(
+            device_id, control_id, meta,
+        )
+
+        brightness_max = None
+        brightness_min = None
+        brightness_readonly = None
+        if brightness_control_id is not None:
+            peer_meta = self._meta_cache.get(
+                f"{device_id}/{brightness_control_id}", {}
+            )
+            brightness_max = peer_meta.get("max")
+            brightness_min = peer_meta.get("min")
+            brightness_readonly = peer_meta.get(META_READONLY) == "1"
+
         return {
             "device_id": device_id,
             "control_id": control_id,
@@ -273,6 +387,74 @@ class WirenBoardDiscovery:
             "topic_prefix": self.entry.data.get("topic_prefix", "/devices"),
             "type": meta.get(META_TYPE),
             "enum": enum_options,
+            "brightness_control_id": brightness_control_id,
+            "is_brightness_child": is_brightness_child,
+            "brightness_max": brightness_max,
+            "brightness_min": brightness_min,
+            "brightness_readonly": brightness_readonly,
             "device_title": self.get_device_title(device_id),
             "device_driver": self.get_device_driver(device_id),
         }
+
+    _BRIGHTNESS_SUFFIX = " Brightness"
+
+    @staticmethod
+    def _is_rgb_group_control(control_id: str) -> bool:
+        """Return True for controls that belong to the RGB Palette group.
+
+        These controls (RGB Strip switch, RGB Strip Hue/Saturation/Brightness
+        ranges) duplicate the RGB Palette; they must not be folded into a
+        dimmable Light pair.
+        """
+        return control_id.lower().startswith("rgb ")
+
+    def _detect_brightness_pair(
+        self, device_id: str, control_id: str, meta: Dict[str, Any]
+    ) -> tuple[str | None, bool]:
+        """Detect if this control is part of a switch+brightness pair.
+
+        Returns (brightness_control_id, is_brightness_child):
+        - brightness_control_id: name of the paired brightness range control
+          if this is a switch that has one (else None).
+        - is_brightness_child: True if this is the range control of such a pair
+          (should not surface as a standalone Number).
+        """
+        control_type = meta.get(META_TYPE)
+
+        # Controls under the RGB Palette umbrella are handled by the RGB
+        # entity itself; do not create a separate brightness pair for them.
+        if self._is_rgb_group_control(control_id):
+            return None, False
+
+        # Rule 1: "<name>" switch + "<name> Brightness" range
+        # (WB-LED white channels).
+        if control_type == "switch":
+            paired = f"{control_id}{self._BRIGHTNESS_SUFFIX}"
+            peer_meta = self._meta_cache.get(f"{device_id}/{paired}", {})
+            if peer_meta.get(META_TYPE) == "range":
+                return paired, False
+
+        if control_type == "range" and control_id.endswith(self._BRIGHTNESS_SUFFIX):
+            base = control_id[: -len(self._BRIGHTNESS_SUFFIX)]
+            peer_meta = self._meta_cache.get(f"{device_id}/{base}", {})
+            if peer_meta.get(META_TYPE) == "switch":
+                return None, True
+
+        # Rule 2: "KN" switch + "Channel N" range (WB-MDM3).
+        if control_type == "switch":
+            m = _K_CHANNEL_RE.match(control_id)
+            if m:
+                paired = f"Channel {m.group(1)}"
+                peer_meta = self._meta_cache.get(f"{device_id}/{paired}", {})
+                if peer_meta.get(META_TYPE) == "range":
+                    return paired, False
+
+        if control_type == "range":
+            m = _CHANNEL_RE.match(control_id)
+            if m:
+                base = f"K{m.group(1)}"
+                peer_meta = self._meta_cache.get(f"{device_id}/{base}", {})
+                if peer_meta.get(META_TYPE) == "switch":
+                    return None, True
+
+        return None, False

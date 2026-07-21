@@ -4,12 +4,59 @@ import logging
 from typing import Any, Dict, Type
 
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DEVICE_TYPE_MAPPING, DOMAIN, SIGNAL_DEVICE_DISCOVERED
 
 logger = logging.getLogger(__name__)
+
+
+def _unique_id_for(device_id: str, control_id: str) -> str:
+    """Match WirenBoardEntity's unique_id convention."""
+    return f"wirenboard_{device_id}_{control_id}"
+
+
+@callback
+def _migrate_orphan_pre_light(
+    hass: HomeAssistant, device_info: Dict[str, Any]
+) -> None:
+    """Remove entity_registry rows that belong to the previous platform layout.
+
+    Before this feature, a WB-LED/WB-MDM3 dimmable output was surfaced as
+    ``switch.wirenboard_<device>_<control>`` plus
+    ``number.wirenboard_<device>_<control>_brightness``. Now the same output is
+    published as a single ``light.wirenboard_<device>_<control>``. HA's entity
+    registry keys on ``(integration, domain, unique_id)``, so the switch and
+    number rows would persist as orphans and break automations that still
+    reference them. Clear them before the Light is registered.
+    """
+    registry = er.async_get(hass)
+    device_id = device_info["device_id"]
+    control_id = device_info["control_id"]
+    brightness_control_id = device_info.get("brightness_control_id")
+
+    for domain in ("switch", "number", "binary_sensor"):
+        old = registry.async_get_entity_id(
+            domain, DOMAIN, _unique_id_for(device_id, control_id)
+        )
+        if old:
+            logger.info("Removing orphan %s → light for %s", old, control_id)
+            registry.async_remove(old)
+
+    if brightness_control_id:
+        for domain in ("number", "sensor"):
+            old = registry.async_get_entity_id(
+                domain,
+                DOMAIN,
+                _unique_id_for(device_id, brightness_control_id),
+            )
+            if old:
+                logger.info(
+                    "Removing orphan %s (brightness peer folded into light)", old
+                )
+                registry.async_remove(old)
 
 
 async def async_setup_platform_entries(
@@ -31,6 +78,12 @@ async def async_setup_platform_entries(
             return
 
         try:
+            if (
+                platform == "light"
+                and device_info.get("brightness_control_id")
+            ):
+                _migrate_orphan_pre_light(hass, device_info)
+
             entity = entity_class(device_info, mqtt_client)
             async_add_entities([entity])
             logger.info("Added %s entity: %s", platform, entity.name)
@@ -60,7 +113,7 @@ def _is_platform_match(device_info: Dict[str, Any], platform: str) -> bool:
     control_id = device_info.get("control_id", "")
     enum_options = device_info.get("enum")
 
-    # Skip child controls of RGB lights (Hue, Saturation, Brightness)
+    # Skip child controls of an RGB Palette (they duplicate the palette value).
     if _is_rgb_child_control(control_id):
         logger.debug(
             "Skipping RGB child control: %s:%s",
@@ -68,6 +121,21 @@ def _is_platform_match(device_info: Dict[str, Any], platform: str) -> bool:
             control_id,
         )
         return False
+
+    # A range control that pairs with a sibling switch (e.g. "Channel 4 Brightness"
+    # next to "Channel 4") is not surfaced on its own — it is folded into the
+    # brightness of the light entity created for the switch.
+    if device_info.get("is_brightness_child"):
+        return False
+
+    # A writable switch that has a "<name> Brightness" range peer becomes a
+    # single dimmable Light instead of a bare Switch.
+    if (
+        device_type == "switch"
+        and not readonly
+        and device_info.get("brightness_control_id")
+    ):
+        return platform == "light"
 
     # Text controls with enum options become SELECT entities only when writable.
     # Read-only enum text controls must remain SENSOR entities to avoid exposing
@@ -92,24 +160,18 @@ def _is_platform_match(device_info: Dict[str, Any], platform: str) -> bool:
 
 
 def _is_rgb_child_control(control_id: str) -> bool:
-    """Check if control is a child of an RGB control."""
-    control_lower = control_id.lower()
-    rgb_suffixes = [
-        " hue",
-        " saturation",
-        " brightness",
-        " bright",
-        " hue changing",
-    ]
+    """Check if control is a slave of an "RGB Palette"-style control.
 
-    for suffix in rgb_suffixes:
-        if control_lower.endswith(suffix) and len(control_id) > len(suffix):
-            return True
-
-    if any(
-        keyword in control_lower
-        for keyword in [" hue ", " saturation ", " brightness ", " bright "]
-    ):
-        return True
-
-    return False
+    The dimmer publishes duplicated Hue/Saturation/Brightness range controls
+    prefixed with "RGB " alongside the combined RGB Palette; those should
+    stay hidden. Other Hue/Brightness controls (e.g. "Channel 4 Brightness",
+    "Hue Changing") are NOT children and must not be filtered out here.
+    """
+    lower = control_id.lower()
+    if not lower.startswith("rgb "):
+        return False
+    return (
+        lower.endswith(" hue")
+        or lower.endswith(" saturation")
+        or lower.endswith(" brightness")
+    )
