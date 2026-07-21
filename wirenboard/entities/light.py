@@ -306,6 +306,3 @@ class WirenBoardLight(WirenBoardEntity, LightEntity):
         )
         await self.mqtt_client.publish(command_topic, payload, False)
 
-    async def _publish_command(self, payload: str) -> None:
-        """Backward-compatible entry point used by RGB code path."""
-        await self._publish_switch(payload)
