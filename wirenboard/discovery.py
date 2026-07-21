@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from typing import Any, Callable, Dict, List
 
 from homeassistant.config_entries import ConfigEntry
@@ -13,6 +14,12 @@ from .mqtt_client import WirenBoardMqttClient
 logger = logging.getLogger(__name__)
 
 DEVICE_META_TOPIC = "/devices/+/meta"
+
+# Naming conventions for dimmable channels published by WB devices.
+# WB-LED (white channels): "Channel N" switch paired with "Channel N Brightness" range.
+# WB-MDM3 (each output):  "KN" switch paired with "Channel N" range.
+_K_CHANNEL_RE = re.compile(r"^K(\d+)$")
+_CHANNEL_RE = re.compile(r"^Channel (\d+)$")
 
 
 class WirenBoardDiscovery:
@@ -103,8 +110,7 @@ class WirenBoardDiscovery:
             if self._has_complete_meta(cache_key):
                 device_id, control_id = cache_key.split("/", 1)
                 device_info = self._create_device_info(device_id, control_id, cache_key)
-                device_type = self._meta_cache[cache_key].get(META_TYPE)
-                if device_type == "text" and cache_key not in self._notified_devices:
+                if cache_key not in self._notified_devices:
                     self._schedule_pending_notification(cache_key, device_info)
                 else:
                     self.hass.loop.call_soon_threadsafe(
@@ -172,13 +178,12 @@ class WirenBoardDiscovery:
             if self._has_complete_meta(cache_key):
                 device_info = self._create_device_info(device_id, control_id, cache_key)
 
-                device_type = self._meta_cache[cache_key].get(META_TYPE)
-                if device_type == "text" and cache_key not in self._notified_devices:
-                    # Debounce: each new meta key (e.g. late-arriving "enum")
+                if cache_key not in self._notified_devices:
+                    # Debounce: each new meta key (late "enum", or a matching
+                    # "<name> Brightness" range arriving after its switch peer)
                     # resets the timer so we notify with the fully-settled meta.
                     self._schedule_pending_notification(cache_key, device_info)
                 else:
-                    self._notified_devices.add(cache_key)
                     await self._async_notify_listeners(device_info)
 
         except Exception as ex:
@@ -261,6 +266,10 @@ class WirenBoardDiscovery:
                         device_id, control_id, enum_str,
                     )
 
+        brightness_control_id, is_brightness_child = self._detect_brightness_pair(
+            device_id, control_id, meta,
+        )
+
         return {
             "device_id": device_id,
             "control_id": control_id,
@@ -273,6 +282,71 @@ class WirenBoardDiscovery:
             "topic_prefix": self.entry.data.get("topic_prefix", "/devices"),
             "type": meta.get(META_TYPE),
             "enum": enum_options,
+            "brightness_control_id": brightness_control_id,
+            "is_brightness_child": is_brightness_child,
             "device_title": self.get_device_title(device_id),
             "device_driver": self.get_device_driver(device_id),
         }
+
+    _BRIGHTNESS_SUFFIX = " Brightness"
+
+    @staticmethod
+    def _is_rgb_group_control(control_id: str) -> bool:
+        """Return True for controls that belong to the RGB Palette group.
+
+        These controls (RGB Strip switch, RGB Strip Hue/Saturation/Brightness
+        ranges) duplicate the RGB Palette; they must not be folded into a
+        dimmable Light pair.
+        """
+        return control_id.lower().startswith("rgb ")
+
+    def _detect_brightness_pair(
+        self, device_id: str, control_id: str, meta: Dict[str, Any]
+    ) -> tuple[str | None, bool]:
+        """Detect if this control is part of a switch+brightness pair.
+
+        Returns (brightness_control_id, is_brightness_child):
+        - brightness_control_id: name of the paired brightness range control
+          if this is a switch that has one (else None).
+        - is_brightness_child: True if this is the range control of such a pair
+          (should not surface as a standalone Number).
+        """
+        control_type = meta.get(META_TYPE)
+
+        # Controls under the RGB Palette umbrella are handled by the RGB
+        # entity itself; do not create a separate brightness pair for them.
+        if self._is_rgb_group_control(control_id):
+            return None, False
+
+        # Rule 1: "<name>" switch + "<name> Brightness" range
+        # (WB-LED white channels).
+        if control_type == "switch":
+            paired = f"{control_id}{self._BRIGHTNESS_SUFFIX}"
+            peer_meta = self._meta_cache.get(f"{device_id}/{paired}", {})
+            if peer_meta.get(META_TYPE) == "range":
+                return paired, False
+
+        if control_type == "range" and control_id.endswith(self._BRIGHTNESS_SUFFIX):
+            base = control_id[: -len(self._BRIGHTNESS_SUFFIX)]
+            peer_meta = self._meta_cache.get(f"{device_id}/{base}", {})
+            if peer_meta.get(META_TYPE) == "switch":
+                return None, True
+
+        # Rule 2: "KN" switch + "Channel N" range (WB-MDM3).
+        if control_type == "switch":
+            m = _K_CHANNEL_RE.match(control_id)
+            if m:
+                paired = f"Channel {m.group(1)}"
+                peer_meta = self._meta_cache.get(f"{device_id}/{paired}", {})
+                if peer_meta.get(META_TYPE) == "range":
+                    return paired, False
+
+        if control_type == "range":
+            m = _CHANNEL_RE.match(control_id)
+            if m:
+                base = f"K{m.group(1)}"
+                peer_meta = self._meta_cache.get(f"{device_id}/{base}", {})
+                if peer_meta.get(META_TYPE) == "switch":
+                    return None, True
+
+        return None, False

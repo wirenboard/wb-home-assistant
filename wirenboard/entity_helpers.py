@@ -60,7 +60,7 @@ def _is_platform_match(device_info: Dict[str, Any], platform: str) -> bool:
     control_id = device_info.get("control_id", "")
     enum_options = device_info.get("enum")
 
-    # Skip child controls of RGB lights (Hue, Saturation, Brightness)
+    # Skip child controls of an RGB Palette (they duplicate the palette value).
     if _is_rgb_child_control(control_id):
         logger.debug(
             "Skipping RGB child control: %s:%s",
@@ -68,6 +68,21 @@ def _is_platform_match(device_info: Dict[str, Any], platform: str) -> bool:
             control_id,
         )
         return False
+
+    # A range control that pairs with a sibling switch (e.g. "Channel 4 Brightness"
+    # next to "Channel 4") is not surfaced on its own — it is folded into the
+    # brightness of the light entity created for the switch.
+    if device_info.get("is_brightness_child"):
+        return False
+
+    # A writable switch that has a "<name> Brightness" range peer becomes a
+    # single dimmable Light instead of a bare Switch.
+    if (
+        device_type == "switch"
+        and not readonly
+        and device_info.get("brightness_control_id")
+    ):
+        return platform == "light"
 
     # Text controls with enum options become SELECT entities only when writable.
     # Read-only enum text controls must remain SENSOR entities to avoid exposing
@@ -92,24 +107,18 @@ def _is_platform_match(device_info: Dict[str, Any], platform: str) -> bool:
 
 
 def _is_rgb_child_control(control_id: str) -> bool:
-    """Check if control is a child of an RGB control."""
-    control_lower = control_id.lower()
-    rgb_suffixes = [
-        " hue",
-        " saturation",
-        " brightness",
-        " bright",
-        " hue changing",
-    ]
+    """Check if control is a slave of an "RGB Palette"-style control.
 
-    for suffix in rgb_suffixes:
-        if control_lower.endswith(suffix) and len(control_id) > len(suffix):
-            return True
-
-    if any(
-        keyword in control_lower
-        for keyword in [" hue ", " saturation ", " brightness ", " bright "]
-    ):
-        return True
-
-    return False
+    The dimmer publishes duplicated Hue/Saturation/Brightness range controls
+    prefixed with "RGB " alongside the combined RGB Palette; those should
+    stay hidden. Other Hue/Brightness controls (e.g. "Channel 4 Brightness",
+    "Hue Changing") are NOT children and must not be filtered out here.
+    """
+    lower = control_id.lower()
+    if not lower.startswith("rgb "):
+        return False
+    return (
+        lower.endswith(" hue")
+        or lower.endswith(" saturation")
+        or lower.endswith(" brightness")
+    )
