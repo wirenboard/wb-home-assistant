@@ -8,12 +8,13 @@ from typing import Any, Callable, Dict, List
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .const import META_ORDER, META_READONLY, META_TYPE
+from .const import META_READONLY, META_TYPE
 from .mqtt_client import WirenBoardMqttClient
 
 logger = logging.getLogger(__name__)
 
 DEVICE_META_TOPIC = "/devices/+/meta"
+CONTROL_META_BLOB_TOPIC = "/devices/+/controls/+/meta"
 
 # Bounded number of times a pending notification can wait for its potential
 # switch/brightness pair partner before firing regardless.
@@ -54,7 +55,15 @@ class WirenBoardDiscovery:
 
         logger.debug("Starting discovery setup for topic: %s", discovery_topic)
 
-        # Subscribe to control meta topics for device discovery
+        # Subscribe to control-level meta JSON blob FIRST so its retained
+        # values (fields like "units" that some devices publish only inside
+        # the aggregated /meta JSON) reach the cache before subtopic-driven
+        # debounce can fire the "meta complete" event.
+        await self.mqtt_client.subscribe(
+            CONTROL_META_BLOB_TOPIC, self._sync_handle_control_meta_blob
+        )
+
+        # Subscribe to control meta subtopics for device discovery
         await self.mqtt_client.subscribe(
             discovery_topic, self._sync_handle_meta_message
         )
@@ -76,6 +85,9 @@ class WirenBoardDiscovery:
         )
         await self.mqtt_client.unsubscribe(
             DEVICE_META_TOPIC, self._sync_handle_device_meta
+        )
+        await self.mqtt_client.unsubscribe(
+            CONTROL_META_BLOB_TOPIC, self._sync_handle_control_meta_blob
         )
         self._listeners.clear()
         self._reset_discovery_state()
@@ -145,6 +157,67 @@ class WirenBoardDiscovery:
                 self._async_process_device_meta(topic, payload)
             )
         )
+
+    def _sync_handle_control_meta_blob(self, topic: str, payload: str):
+        """Handle control-level meta JSON blob from MQTT thread."""
+        self.hass.loop.call_soon_threadsafe(
+            lambda: self.hass.async_create_task(
+                self._async_process_control_meta_blob(topic, payload)
+            )
+        )
+
+    async def _async_process_control_meta_blob(self, topic: str, payload: str):
+        """Merge control-level meta JSON blob into meta_cache.
+
+        Some devices publish fields like "units" only inside the aggregated
+        `/meta` JSON, not as separate `/meta/<key>` subtopics. Subtopic
+        values still take precedence: entries already present in the cache
+        are not overwritten. `enum` is skipped so the dedicated subtopic
+        parser (which knows its JSON shape) stays authoritative.
+        """
+        try:
+            parts = topic.split("/")
+            # Format: /devices/{device_id}/controls/{control_id}/meta  -> 6 parts
+            if len(parts) != 6:
+                return
+            device_id = parts[2]
+            control_id = parts[4]
+            cache_key = f"{device_id}/{control_id}"
+
+            try:
+                blob = json.loads(payload)
+            except (json.JSONDecodeError, ValueError):
+                return
+            if not isinstance(blob, dict):
+                return
+
+            cache = self._meta_cache.setdefault(cache_key, {})
+            for key, value in blob.items():
+                if key == "enum":
+                    continue
+                if key in cache:
+                    continue
+                # Store scalars stringified to match subtopic-payload convention
+                # (subtopic payloads are always strings; readonly/booleans arrive
+                # as "0"/"1"). Skip nested structures — they are not consumed.
+                if isinstance(value, bool):
+                    cache[key] = "1" if value else "0"
+                elif isinstance(value, (str, int, float)):
+                    cache[key] = str(value)
+                # dict/list values (like "title") are intentionally skipped
+
+            if (
+                self._has_complete_meta(cache_key)
+                and cache_key not in self._notified_devices
+            ):
+                device_info = self._create_device_info(
+                    device_id, control_id, cache_key
+                )
+                self._schedule_pending_notification(cache_key, device_info)
+        except Exception as ex:
+            logger.error(
+                "Error processing control meta blob for %s: %s", topic, ex
+            )
 
     async def _async_process_device_meta(self, topic: str, payload: str):
         """Process device-level meta (JSON with title, driver)."""
@@ -335,7 +408,7 @@ class WirenBoardDiscovery:
     def _has_complete_meta(self, cache_key: str) -> bool:
         """Check if we have complete meta data for a device."""
         meta = self._meta_cache.get(cache_key, {})
-        return META_TYPE in meta and META_READONLY in meta and META_ORDER in meta
+        return META_TYPE in meta and META_READONLY in meta
 
     def _create_device_info(
         self, device_id: str, control_id: str, cache_key: str

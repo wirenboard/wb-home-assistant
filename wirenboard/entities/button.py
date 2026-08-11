@@ -13,6 +13,11 @@ logger = logging.getLogger(__name__)
 class WirenBoardButton(WirenBoardEntity, ButtonEntity):
     """Representation of a Wiren Board button."""
 
+    def __init__(self, device_info, mqtt_client):
+        super().__init__(device_info, mqtt_client)
+        # pushbutton has no state topic — treat as available unless meta/error arrives
+        self._available = True
+
     async def async_press(self, **kwargs):
         """Handle the button press."""
         if self._device_info.get("readonly"):
