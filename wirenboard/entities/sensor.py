@@ -110,6 +110,7 @@ _DEFAULT_UNIT_BY_TYPE = {
     "lux": "lx",
     "ppm": "ppm",
     "ppb": "ppb",
+    "concentration": "ppm",
     "sound_level": "dB",
     "atmospheric_pressure": "mbar",
     "pressure": "Pa",
