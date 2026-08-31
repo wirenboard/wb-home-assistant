@@ -30,7 +30,8 @@ from homeassistant.const import (
 try:
     from homeassistant.const import UnitOfIlluminance
 except ImportError:
-    # HA < 2025.12: UnitOfIlluminance not yet available
+    # No HA release ships UnitOfIlluminance yet (checked up to 2026.7);
+    # keep this fallback until it appears in homeassistant.const.
     from enum import StrEnum
 
     class UnitOfIlluminance(StrEnum):
