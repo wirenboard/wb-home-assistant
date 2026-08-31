@@ -33,6 +33,7 @@ except ImportError:
     class UnitOfIlluminance(StrEnum):
         LUX = "lx"
 
+
 from .base import WirenBoardEntity
 
 logger = logging.getLogger(__name__)
@@ -169,7 +170,7 @@ class WirenBoardSensor(WirenBoardEntity, SensorEntity):
             self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         elif self._attr_device_class is not None:
             self._attr_state_class = SensorStateClass.MEASUREMENT
-  
+
         # Set native unit
         if unit:
             mapped_unit = _UNIT_MAPPING.get(unit)
