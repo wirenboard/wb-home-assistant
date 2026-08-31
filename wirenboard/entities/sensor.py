@@ -11,12 +11,15 @@ from homeassistant.const import (
     CONCENTRATION_PARTS_PER_BILLION,
     CONCENTRATION_PARTS_PER_MILLION,
     PERCENTAGE,
+    UnitOfApparentPower,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
     UnitOfEnergy,
     UnitOfFrequency,
     UnitOfPower,
     UnitOfPressure,
+    UnitOfReactiveEnergy,
+    UnitOfReactivePower,
     UnitOfSoundPressure,
     UnitOfSpeed,
     UnitOfTemperature,
@@ -81,6 +84,9 @@ _DEVICE_CLASS_BY_UNIT = {
     "ppb": SensorDeviceClass.VOLATILE_ORGANIC_COMPOUNDS_PARTS,
     "dB": SensorDeviceClass.SOUND_PRESSURE,
     "m^3": SensorDeviceClass.WATER,
+    "var": SensorDeviceClass.REACTIVE_POWER,
+    "VA": SensorDeviceClass.APPARENT_POWER,
+    "kvarh": SensorDeviceClass.REACTIVE_ENERGY,
 }
 
 # Types that represent cumulative totals
@@ -95,6 +101,7 @@ _TOTAL_INCREASING_TYPES = {
 # from the unit rather than from the WB type.
 _TOTAL_INCREASING_CLASSES = {
     SensorDeviceClass.ENERGY,
+    SensorDeviceClass.REACTIVE_ENERGY,
     SensorDeviceClass.WATER,
 }
 
@@ -151,6 +158,9 @@ _UNIT_MAPPING = {
     "m/s": UnitOfSpeed.METERS_PER_SECOND,
     "m^3/h": UnitOfVolumeFlowRate.CUBIC_METERS_PER_HOUR,
     "m^3": UnitOfVolume.CUBIC_METERS,
+    "var": UnitOfReactivePower.VOLT_AMPERE_REACTIVE,
+    "VA": UnitOfApparentPower.VOLT_AMPERE,
+    "kvarh": UnitOfReactiveEnergy.KILO_VOLT_AMPERE_REACTIVE_HOUR,
 }
 
 
