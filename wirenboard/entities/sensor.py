@@ -80,6 +80,7 @@ _DEVICE_CLASS_BY_UNIT = {
     "ppm": SensorDeviceClass.CO2,
     "ppb": SensorDeviceClass.VOLATILE_ORGANIC_COMPOUNDS_PARTS,
     "dB": SensorDeviceClass.SOUND_PRESSURE,
+    "m^3": SensorDeviceClass.WATER,
 }
 
 # Types that represent cumulative totals
@@ -87,6 +88,14 @@ _TOTAL_INCREASING_TYPES = {
     "power_consumption",
     "water_consumption",
     "heat_energy",
+}
+
+# Device classes that are always cumulative totals on WB devices.
+# Needed for generic "value"/"range" controls, whose device_class comes
+# from the unit rather than from the WB type.
+_TOTAL_INCREASING_CLASSES = {
+    SensorDeviceClass.ENERGY,
+    SensorDeviceClass.WATER,
 }
 
 # Default units for deprecated WB types that imply a specific unit
@@ -164,9 +173,10 @@ class WirenBoardSensor(WirenBoardEntity, SensorEntity):
             self._attr_device_class = _DEVICE_CLASS_BY_UNIT.get(unit)
 
         # Set state_class
-        if device_type in _TOTAL_INCREASING_TYPES:
-            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
-        elif self._attr_device_class == SensorDeviceClass.ENERGY:
+        if (
+            device_type in _TOTAL_INCREASING_TYPES
+            or self._attr_device_class in _TOTAL_INCREASING_CLASSES
+        ):
             self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         elif self._attr_device_class is not None:
             self._attr_state_class = SensorStateClass.MEASUREMENT
