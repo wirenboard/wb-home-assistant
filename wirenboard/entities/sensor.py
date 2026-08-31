@@ -165,9 +165,11 @@ class WirenBoardSensor(WirenBoardEntity, SensorEntity):
         # Set state_class
         if device_type in _TOTAL_INCREASING_TYPES:
             self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        elif self._attr_device_class == SensorDeviceClass.ENERGY:
+            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         elif self._attr_device_class is not None:
             self._attr_state_class = SensorStateClass.MEASUREMENT
-
+  
         # Set native unit
         if unit:
             mapped_unit = _UNIT_MAPPING.get(unit)
