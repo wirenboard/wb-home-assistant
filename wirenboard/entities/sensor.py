@@ -90,16 +90,17 @@ _DEVICE_CLASS_BY_UNIT = {
     "kvarh": SensorDeviceClass.REACTIVE_ENERGY,
 }
 
-# Types that represent cumulative totals
-_TOTAL_INCREASING_TYPES = {
-    "power_consumption",
-    "water_consumption",
-    "heat_energy",
-}
-
-# Device classes that are always cumulative totals on WB devices.
-# Needed for generic "value"/"range" controls, whose device_class comes
-# from the unit rather than from the WB type.
+# Device classes treated as cumulative totals.
+#
+# Covers both the WB types that mean a meter (power_consumption,
+# water_consumption, heat_energy — they map to these classes) and generic
+# "value" controls, whose device_class is derived from the unit instead.
+#
+# ENERGY and REACTIVE_ENERGY are safe: on WB, kWh and kvarh are always
+# meter totals. WATER is a heuristic — m^3 cannot tell a water meter from
+# a tank volume, and the meta carries nothing to distinguish them. Every
+# m^3 control on the demo stand is a meter (WB-MWAC pulse inputs), so we
+# take that as the common case.
 _TOTAL_INCREASING_CLASSES = {
     SensorDeviceClass.ENERGY,
     SensorDeviceClass.REACTIVE_ENERGY,
@@ -185,10 +186,7 @@ class WirenBoardSensor(WirenBoardEntity, SensorEntity):
             self._attr_device_class = _DEVICE_CLASS_BY_UNIT.get(unit)
 
         # Set state_class
-        if (
-            device_type in _TOTAL_INCREASING_TYPES
-            or self._attr_device_class in _TOTAL_INCREASING_CLASSES
-        ):
+        if self._attr_device_class in _TOTAL_INCREASING_CLASSES:
             self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         elif self._attr_device_class is not None:
             self._attr_state_class = SensorStateClass.MEASUREMENT
