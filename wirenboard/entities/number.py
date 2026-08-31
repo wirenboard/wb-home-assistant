@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class WirenBoardNumber(WirenBoardEntity, NumberEntity):
     """Representation of a Wiren Board number."""
 
-    def __init__(self, device_info, mqtt_client):      
+    def __init__(self, device_info, mqtt_client):
         value = device_info.get("min", "0")
         if value:
             self._attr_native_min_value = float(value)
@@ -24,7 +24,7 @@ class WirenBoardNumber(WirenBoardEntity, NumberEntity):
         if value:
             self._attr_native_max_value = float(value)
         else:
-            self._attr_native_max_value = 100.0  
+            self._attr_native_max_value = 100.0
         if (
             device_info["device_id"] == "buzzer"
             and device_info["control_id"] == "frequency"

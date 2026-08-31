@@ -1,6 +1,11 @@
 # Home Assistant custom component for Wiren Board devices #
 
 
+## Requirements ##
+
+Home Assistant **2025.6 or newer**. The integration maps reactive energy controls
+(`kvarh`) to `SensorDeviceClass.REACTIVE_ENERGY`, which was added in that release.
+
 ## Installation ##
 
 The integration is installed as a custom Home Assistant component. It is assumed that Home Assistant is installed according to the [instructions](https://wiki.wirenboard.com/wiki/Home_Assistant).

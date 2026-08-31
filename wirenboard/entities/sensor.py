@@ -11,12 +11,15 @@ from homeassistant.const import (
     CONCENTRATION_PARTS_PER_BILLION,
     CONCENTRATION_PARTS_PER_MILLION,
     PERCENTAGE,
+    UnitOfApparentPower,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
     UnitOfEnergy,
     UnitOfFrequency,
     UnitOfPower,
     UnitOfPressure,
+    UnitOfReactiveEnergy,
+    UnitOfReactivePower,
     UnitOfSoundPressure,
     UnitOfSpeed,
     UnitOfTemperature,
@@ -27,11 +30,13 @@ from homeassistant.const import (
 try:
     from homeassistant.const import UnitOfIlluminance
 except ImportError:
-    # HA < 2025.12: UnitOfIlluminance not yet available
+    # No HA release ships UnitOfIlluminance yet (checked up to 2026.7);
+    # keep this fallback until it appears in homeassistant.const.
     from enum import StrEnum
 
     class UnitOfIlluminance(StrEnum):
         LUX = "lx"
+
 
 from .base import WirenBoardEntity
 
@@ -79,13 +84,27 @@ _DEVICE_CLASS_BY_UNIT = {
     "ppm": SensorDeviceClass.CO2,
     "ppb": SensorDeviceClass.VOLATILE_ORGANIC_COMPOUNDS_PARTS,
     "dB": SensorDeviceClass.SOUND_PRESSURE,
+    "m^3": SensorDeviceClass.WATER,
+    "var": SensorDeviceClass.REACTIVE_POWER,
+    "VA": SensorDeviceClass.APPARENT_POWER,
+    "kvarh": SensorDeviceClass.REACTIVE_ENERGY,
 }
 
-# Types that represent cumulative totals
-_TOTAL_INCREASING_TYPES = {
-    "power_consumption",
-    "water_consumption",
-    "heat_energy",
+# Device classes treated as cumulative totals.
+#
+# Covers both the WB types that mean a meter (power_consumption,
+# water_consumption, heat_energy — they map to these classes) and generic
+# "value" controls, whose device_class is derived from the unit instead.
+#
+# ENERGY and REACTIVE_ENERGY are safe: on WB, kWh and kvarh are always
+# meter totals. WATER is a heuristic — m^3 cannot tell a water meter from
+# a tank volume, and the meta carries nothing to distinguish them. Every
+# m^3 control on the demo stand is a meter (WB-MWAC pulse inputs), so we
+# take that as the common case.
+_TOTAL_INCREASING_CLASSES = {
+    SensorDeviceClass.ENERGY,
+    SensorDeviceClass.REACTIVE_ENERGY,
+    SensorDeviceClass.WATER,
 }
 
 # Default units for deprecated WB types that imply a specific unit
@@ -100,6 +119,7 @@ _DEFAULT_UNIT_BY_TYPE = {
     "lux": "lx",
     "ppm": "ppm",
     "ppb": "ppb",
+    "concentration": "ppm",
     "sound_level": "dB",
     "atmospheric_pressure": "mbar",
     "pressure": "Pa",
@@ -140,6 +160,9 @@ _UNIT_MAPPING = {
     "m/s": UnitOfSpeed.METERS_PER_SECOND,
     "m^3/h": UnitOfVolumeFlowRate.CUBIC_METERS_PER_HOUR,
     "m^3": UnitOfVolume.CUBIC_METERS,
+    "var": UnitOfReactivePower.VOLT_AMPERE_REACTIVE,
+    "VA": UnitOfApparentPower.VOLT_AMPERE,
+    "kvarh": UnitOfReactiveEnergy.KILO_VOLT_AMPERE_REACTIVE_HOUR,
 }
 
 
@@ -163,13 +186,11 @@ class WirenBoardSensor(WirenBoardEntity, SensorEntity):
             self._attr_device_class = _DEVICE_CLASS_BY_UNIT.get(unit)
 
         # Set state_class
-        if device_type in _TOTAL_INCREASING_TYPES:
-            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
-        elif self._attr_device_class == SensorDeviceClass.ENERGY:
+        if self._attr_device_class in _TOTAL_INCREASING_CLASSES:
             self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         elif self._attr_device_class is not None:
             self._attr_state_class = SensorStateClass.MEASUREMENT
-  
+
         # Set native unit
         if unit:
             mapped_unit = _UNIT_MAPPING.get(unit)
