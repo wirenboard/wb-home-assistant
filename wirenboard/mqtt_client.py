@@ -111,7 +111,7 @@ class WirenBoardMqttClient:
         """Disconnect from MQTT broker."""
         self._shutting_down = True
         if self.client:
-            self.client.loop_stop()
+            await self.hass.async_add_executor_job(self.client.loop_stop)
             self.client.disconnect()
             self.connected = False
 
