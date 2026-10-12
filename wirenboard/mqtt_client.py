@@ -58,6 +58,7 @@ class WirenBoardMqttClient:
 
         self.client: Optional[mqtt.Client] = None
         self.connected = False
+        self.auth_failed = False
         self._shutting_down = False
         self._connect_event = asyncio.Event()
 
@@ -177,6 +178,10 @@ class WirenBoardMqttClient:
 
         This runs in paho's network thread — must be fast.
         """
+        self.auth_failed = rc in (
+            mqtt.CONNACK_REFUSED_BAD_USERNAME_PASSWORD,
+            mqtt.CONNACK_REFUSED_NOT_AUTHORIZED,
+        )
         if rc == 0:
             self.connected = True
             logger.info("Connected to MQTT broker at %s:%s", self.host, self.port)
@@ -249,7 +254,7 @@ class WirenBoardMqttClient:
 
     async def test_connection(self) -> bool:
         """Test MQTT connection by connecting and disconnecting."""
-        connected = await self.connect()
-        if connected:
+        try:
+            return await self.connect()
+        finally:
             await self.disconnect()
-        return connected
