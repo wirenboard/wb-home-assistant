@@ -5,6 +5,11 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import AbortFlow
+from homeassistant.helpers.selector import (
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
+)
 
 from .const import (
     CONF_CLIENT_ID,
@@ -46,8 +51,9 @@ class WirenBoardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 # Test MQTT connection
-                if not await self._test_mqtt_connection(user_input):
-                    errors["base"] = "cannot_connect"
+                error = await self._test_mqtt_connection(user_input)
+                if error:
+                    errors["base"] = error
                 else:
                     # Create unique ID based on host and client_id
                     unique_id = f"{user_input[CONF_HOST]}_{user_input.get(CONF_CLIENT_ID, DEFAULT_CLIENT_ID)}"
@@ -76,14 +82,14 @@ class WirenBoardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     if user_input
                     else DEFAULT_PORT,
                 ): int,
-                # vol.Optional(
-                #     CONF_USERNAME,
-                #     default=user_input.get(CONF_USERNAME, "") if user_input else "",
-                # ): str,
-                # vol.Optional(
-                #     CONF_PASSWORD,
-                #     default=user_input.get(CONF_PASSWORD, "") if user_input else "",
-                # ): str,
+                vol.Optional(
+                    CONF_USERNAME,
+                    default=user_input.get(CONF_USERNAME, "") if user_input else "",
+                ): str,
+                vol.Optional(
+                    CONF_PASSWORD,
+                    default=user_input.get(CONF_PASSWORD, "") if user_input else "",
+                ): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
                 # vol.Required(
                 #     CONF_CLIENT_ID,
                 #     default=user_input.get(CONF_CLIENT_ID, DEFAULT_CLIENT_ID)
@@ -132,7 +138,7 @@ class WirenBoardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def _test_mqtt_connection(self, config):
-        """Test MQTT connection with provided configuration."""
+        """Test MQTT connection; return an error key or None on success."""
         try:
             self._client = WirenBoardMqttClient(
                 hass=self.hass,
@@ -146,16 +152,14 @@ class WirenBoardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 keepalive=config.get(CONF_KEEPALIVE, DEFAULT_KEEPALIVE),
             )
 
-            # Test connection
-            connected = await self._client.test_connection()
-            if connected:
-                await self._client.disconnect()
-            return connected
+            if await self._client.test_connection():
+                return None
+            return "invalid_auth" if self._client.auth_failed else "cannot_connect"
 
         except Exception as ex:
             if self._client:
                 await self._client.disconnect()
-            return False
+            return "cannot_connect"
 
     @staticmethod
     @callback
@@ -192,8 +196,9 @@ class WirenBoardOptionsFlow(config_entries.OptionsFlow):
                 )
 
                 if connection_changed:
-                    if not await self._test_mqtt_connection(user_input):
-                        errors["base"] = "cannot_connect"
+                    error = await self._test_mqtt_connection(user_input)
+                    if error:
+                        errors["base"] = error
                     else:
                         self.hass.config_entries.async_update_entry(
                             self.config_entry,
@@ -226,7 +231,7 @@ class WirenBoardOptionsFlow(config_entries.OptionsFlow):
                     ): str,
                     vol.Optional(
                         CONF_PASSWORD, default=data.get(CONF_PASSWORD, "")
-                    ): str,
+                    ): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
                     vol.Required(
                         CONF_CLIENT_ID,
                         default=data.get(CONF_CLIENT_ID, DEFAULT_CLIENT_ID),
@@ -256,7 +261,7 @@ class WirenBoardOptionsFlow(config_entries.OptionsFlow):
         )
 
     async def _test_mqtt_connection(self, config):
-        """Test MQTT connection with provided configuration."""
+        """Test MQTT connection; return an error key or None on success."""
         try:
             self._client = WirenBoardMqttClient(
                 hass=self.hass,
@@ -270,12 +275,11 @@ class WirenBoardOptionsFlow(config_entries.OptionsFlow):
                 keepalive=config.get(CONF_KEEPALIVE),
             )
 
-            connected = await self._client.test_connection()
-            if connected:
-                await self._client.disconnect()
-            return connected
+            if await self._client.test_connection():
+                return None
+            return "invalid_auth" if self._client.auth_failed else "cannot_connect"
 
         except Exception as ex:
             if self._client:
                 await self._client.disconnect()
-            return False
+            return "cannot_connect"

@@ -20,7 +20,7 @@
     },
     "error": {
       "cannot_connect": "Failed to connect to MQTT broker",
-      "invalid_auth": "Invalid authentication",
+      "invalid_auth": "Invalid username or password",
       "unknown": "Unknown error occurred"
     },
     "abort": {
@@ -48,6 +48,7 @@
     },
     "error": {
       "cannot_connect": "Failed to connect to MQTT broker",
+      "invalid_auth": "Invalid username or password",
       "unknown": "Unknown error occurred"
     }
   }
