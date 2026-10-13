@@ -115,6 +115,7 @@ _DEFAULT_UNIT_BY_TYPE = {
     "power": "W",
     "power_consumption": "kWh",
     "voltage": "V",
+    "concentration": "ppm",
     "current": "A",
     "lux": "lx",
     "ppm": "ppm",
