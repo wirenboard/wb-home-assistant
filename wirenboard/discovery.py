@@ -26,6 +26,13 @@ _MAX_PAIR_DEFERRALS = 2
 _K_CHANNEL_RE = re.compile(r"^K(\d+)$")
 _CHANNEL_RE = re.compile(r"^Channel (\d+)$")
 
+THERMOSTAT_CONTROLS = {
+    "rule_enabled": ("switch", "0"),
+    "target_temperature": ("range", "0"),
+    "current_temperature": ("value", "1"),
+    "actuator_status": ("switch", "1"),
+}
+
 
 class WirenBoardDiscovery:
     """Discover Wiren Board devices via MQTT."""
@@ -46,6 +53,9 @@ class WirenBoardDiscovery:
         # potential pair partner to appear in meta cache. Capped by
         # _MAX_PAIR_DEFERRALS to keep the worst-case delay bounded.
         self._pair_deferrals: Dict[str, int] = {}
+        self._scenario_handles: Dict[str, Any] = {}
+        self._scenario_passthrough: set[str] = set()
+        self._thermostat_devices: set[str] = set()
 
     async def async_setup(self):
         """Set up discovery."""
@@ -103,6 +113,11 @@ class WirenBoardDiscovery:
         for handle in self._pending_handles.values():
             handle.cancel()
         self._pending_handles.clear()
+        for handle in self._scenario_handles.values():
+            handle.cancel()
+        self._scenario_handles.clear()
+        self._scenario_passthrough.clear()
+        self._thermostat_devices.clear()
         self._pending_notifications.clear()
         self._pair_deferrals.clear()
         self._notified_devices.clear()
@@ -285,6 +300,11 @@ class WirenBoardDiscovery:
 
     async def _async_notify_listeners(self, device_info: Dict[str, Any]):
         """Notify all listeners about discovered device."""
+        if (
+            device_info["device_id"] in self._thermostat_devices
+            and device_info["device_type"] != "thermostat"
+        ):
+            return
         if not self._listeners:
             logger.warning("No listeners registered for device discovery")
             return
@@ -321,6 +341,25 @@ class WirenBoardDiscovery:
             device_id, control_id = cache_key.split("/", 1)
             device_info = self._create_device_info(device_id, control_id, cache_key)
 
+            if device_id in self._thermostat_devices:
+                self._pending_notifications.pop(cache_key, None)
+                return
+            if (
+                device_id.startswith("wbsc_")
+                and device_id not in self._scenario_passthrough
+            ):
+                self._pending_notifications[cache_key] = device_info
+                if self._thermostat_ready(device_id):
+                    await self._emit_thermostat(device_id)
+                elif device_id not in self._scenario_handles:
+                    self._scenario_handles[device_id] = self.hass.loop.call_later(
+                        2.0,
+                        lambda: self.hass.async_create_task(
+                            self._flush_scenario(device_id)
+                        ),
+                    )
+                return
+
             if self._should_defer_for_pair(device_id, control_id, device_info):
                 deferrals = self._pair_deferrals.get(cache_key, 0)
                 if deferrals < _MAX_PAIR_DEFERRALS:
@@ -338,6 +377,62 @@ class WirenBoardDiscovery:
         self._pair_deferrals.pop(cache_key, None)
         self._notified_devices.add(cache_key)
         await self._async_notify_listeners(device_info)
+
+    def _thermostat_ready(self, device_id: str) -> bool:
+        """Only group the known wb-scenarios thermostat control layout."""
+        return all(
+            (meta := self._meta_cache.get(f"{device_id}/{control_id}", {})).get(
+                "type"
+            ) == expected_type
+            and meta.get("readonly") == expected_readonly
+            for control_id, (expected_type, expected_readonly) in
+            THERMOSTAT_CONTROLS.items()
+        )
+
+    async def _emit_thermostat(self, device_id: str) -> None:
+        self._thermostat_devices.add(device_id)
+        handle = self._scenario_handles.pop(device_id, None)
+        if handle:
+            handle.cancel()
+        for cache_key in list(self._pending_notifications):
+            if cache_key.startswith(f"{device_id}/"):
+                self._pending_notifications.pop(cache_key)
+                pending = self._pending_handles.pop(cache_key, None)
+                if pending:
+                    pending.cancel()
+        target = self._meta_cache[f"{device_id}/target_temperature"]
+        await self._async_notify_listeners(
+            {
+                "device_id": device_id,
+                "control_id": "thermostat",
+                "device_type": "thermostat",
+                "readonly": False,
+                "min": target.get("min"),
+                "max": target.get("max"),
+                "precision": target.get("precision"),
+                "device_title": self.get_device_title(device_id),
+                "device_driver": self.get_device_driver(device_id),
+            }
+        )
+
+    async def _flush_scenario(self, device_id: str) -> None:
+        """Leave non-thermostat scenarios on the normal control platforms."""
+        self._scenario_handles.pop(device_id, None)
+        if device_id in self._thermostat_devices:
+            return
+        self._scenario_passthrough.add(device_id)
+        for cache_key in list(self._pending_notifications):
+            if not cache_key.startswith(f"{device_id}/"):
+                continue
+            self._pending_notifications.pop(cache_key)
+            pending = self._pending_handles.pop(cache_key, None)
+            if pending:
+                pending.cancel()
+            self._notified_devices.add(cache_key)
+            _, control_id = cache_key.split("/", 1)
+            await self._async_notify_listeners(
+                self._create_device_info(device_id, control_id, cache_key)
+            )
 
     def _schedule_pending_notification(
         self, cache_key: str, device_info: Dict[str, Any]
