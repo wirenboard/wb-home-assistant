@@ -59,6 +59,30 @@ def _migrate_orphan_pre_light(
                 registry.async_remove(old)
 
 
+@callback
+def _migrate_thermostat_controls(hass: HomeAssistant, device_id: str) -> None:
+    """Drop registry entries previously created for the scenario controls."""
+    registry = er.async_get(hass)
+    for control_id in (
+        "rule_enabled",
+        "target_temperature",
+        "current_temperature",
+        "actuator_status",
+        "output_power",
+        "output_timing",
+        "pid_reset",
+        "state",
+    ):
+        for domain in (
+            "switch", "number", "sensor", "binary_sensor", "button", "text", "select"
+        ):
+            entity_id = registry.async_get_entity_id(
+                domain, DOMAIN, _unique_id_for(device_id, control_id)
+            )
+            if entity_id:
+                registry.async_remove(entity_id)
+
+
 async def async_setup_platform_entries(
     hass: HomeAssistant,
     config_entry,
@@ -83,6 +107,8 @@ async def async_setup_platform_entries(
                 and device_info.get("brightness_control_id")
             ):
                 _migrate_orphan_pre_light(hass, device_info)
+            if platform == "climate":
+                _migrate_thermostat_controls(hass, device_info["device_id"])
 
             entity = entity_class(device_info, mqtt_client)
             async_add_entities([entity])
@@ -112,6 +138,9 @@ def _is_platform_match(device_info: Dict[str, Any], platform: str) -> bool:
     readonly = device_info.get("readonly", False)
     control_id = device_info.get("control_id", "")
     enum_options = device_info.get("enum")
+
+    if device_type == "thermostat":
+        return platform == "climate"
 
     # Skip child controls of an RGB Palette (they duplicate the palette value).
     if _is_rgb_child_control(control_id):

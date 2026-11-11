@@ -27,6 +27,7 @@ The integration is installed as a custom Home Assistant component. It is assumed
 | rgb|| light |
 | alarm|| binary_sensor |
 | text|| text |
+| wb-scenarios thermostat || climate |
 
 ### Dimmable channels (WB-LED, WB-MDM3) ###
 
@@ -40,3 +41,10 @@ Read-only text controls with an `enum` remain a `sensor`; writable ones
 become a `select`. Controls that belong to the RGB Palette group
 (`RGB Strip`, `RGB Strip Hue/Saturation/Brightness`) are hidden — the RGB
 light owns them.
+
+Thermostats created by `wb-scenarios` (`wbsc_*` devices with the thermostat
+controls) appear as one `climate` entity with heat/off modes, current and target
+temperatures, and heating status. Their individual controls, including PID
+diagnostics and reset, are hidden. Existing Home Assistant registry entries for
+those controls are removed when the climate entity is created; automations that
+refer to the old entities must be updated.
