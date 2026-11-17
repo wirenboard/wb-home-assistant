@@ -303,6 +303,7 @@ class WirenBoardDiscovery:
         if (
             device_info["device_id"] in self._thermostat_devices
             and device_info["device_type"] != "thermostat"
+            and device_info["control_id"] != "current_temperature"
         ):
             return
         if not self._listeners:
@@ -342,9 +343,10 @@ class WirenBoardDiscovery:
             device_info = self._create_device_info(device_id, control_id, cache_key)
 
             if device_id in self._thermostat_devices:
-                self._pending_notifications.pop(cache_key, None)
-                return
-            if (
+                if control_id != "current_temperature":
+                    self._pending_notifications.pop(cache_key, None)
+                    return
+            elif (
                 device_id.startswith("wbsc_")
                 and device_id not in self._scenario_passthrough
             ):
@@ -394,8 +396,9 @@ class WirenBoardDiscovery:
         handle = self._scenario_handles.pop(device_id, None)
         if handle:
             handle.cancel()
+        sensor_key = f"{device_id}/current_temperature"
         for cache_key in list(self._pending_notifications):
-            if cache_key.startswith(f"{device_id}/"):
+            if cache_key.startswith(f"{device_id}/") and cache_key != sensor_key:
                 self._pending_notifications.pop(cache_key)
                 pending = self._pending_handles.pop(cache_key, None)
                 if pending:
@@ -414,6 +417,7 @@ class WirenBoardDiscovery:
                 "device_driver": self.get_device_driver(device_id),
             }
         )
+        await self._async_send_pending_notification(sensor_key)
 
     async def _flush_scenario(self, device_id: str) -> None:
         """Leave non-thermostat scenarios on the normal control platforms."""

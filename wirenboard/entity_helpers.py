@@ -66,7 +66,6 @@ def _migrate_thermostat_controls(hass: HomeAssistant, device_id: str) -> None:
     for control_id in (
         "rule_enabled",
         "target_temperature",
-        "current_temperature",
         "actuator_status",
         "output_power",
         "output_timing",

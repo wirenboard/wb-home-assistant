@@ -19,7 +19,11 @@ class WirenBoardClimate(WirenBoardEntity, ClimateEntity):
     """A thermostat backed by four controls of one scenario device."""
 
     _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
-    _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
+    _attr_supported_features = (
+        ClimateEntityFeature.TARGET_TEMPERATURE
+        | ClimateEntityFeature.TURN_ON
+        | ClimateEntityFeature.TURN_OFF
+    )
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
 
     def __init__(self, device_info: dict[str, Any], mqtt_client: Any) -> None:
@@ -92,12 +96,13 @@ class WirenBoardClimate(WirenBoardEntity, ClimateEntity):
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         temperature = kwargs.get(ATTR_TEMPERATURE)
-        if temperature is None:
-            return
-        value = self._number(temperature, None)
-        if value is None or not self.min_temp <= value <= self.max_temp:
-            raise HomeAssistantError(f"Temperature is outside {self.min_temp}..{self.max_temp} C")
-        await self._publish("target_temperature", str(value))
+        if temperature is not None:
+            value = self._number(temperature, None)
+            if value is None or not self.min_temp <= value <= self.max_temp:
+                raise HomeAssistantError(f"Temperature is outside {self.min_temp}..{self.max_temp} C")
+            await self._publish("target_temperature", str(value))
+        if (hvac_mode := kwargs.get(ATTR_HVAC_MODE)) is not None:
+            await self.async_set_hvac_mode(hvac_mode)
 
     async def _publish(self, control: str, payload: str) -> None:
         topic = TOPIC_COMMAND.format(device=self.device_id, control=control)
