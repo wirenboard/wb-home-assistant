@@ -8,8 +8,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import (
-    CONCENTRATION_PARTS_PER_BILLION,
-    CONCENTRATION_PARTS_PER_MILLION,
+    UnitOfRatio,
     PERCENTAGE,
     UnitOfApparentPower,
     UnitOfElectricCurrent,
@@ -153,8 +152,8 @@ _UNIT_MAPPING = {
     "Wh": UnitOfEnergy.WATT_HOUR,
     "lx": UnitOfIlluminance.LUX,
     "lux": UnitOfIlluminance.LUX,
-    "ppb": CONCENTRATION_PARTS_PER_BILLION,
-    "ppm": CONCENTRATION_PARTS_PER_MILLION,
+    "ppb": UnitOfRatio.PARTS_PER_BILLION,
+    "ppm": UnitOfRatio.PARTS_PER_MILLION,
     "dB": UnitOfSoundPressure.DECIBEL,
     "Hz": UnitOfFrequency.HERTZ,
     "m/s": UnitOfSpeed.METERS_PER_SECOND,
